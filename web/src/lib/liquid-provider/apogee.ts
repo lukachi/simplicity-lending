@@ -15,13 +15,9 @@ export const SIMPLICITY_LENDING_V3_BUNDLE_HASH =
 export const ACCEPT_OFFER_ACTION = 'lending_contract.AcceptOffer'
 
 const CONNECT_METHODS = ['experimental_executeTxManifest', 'getBalance'] as const
-const CONNECT_EVENTS = ['wallet_connectionChanged'] as const
 
 function hasRequestedPermissions(connection: LiquidConnection): boolean {
-  return (
-    CONNECT_METHODS.every(method => connection.permissions.methods.includes(method)) &&
-    CONNECT_EVENTS.every(event => connection.permissions.events.includes(event))
-  )
+  return CONNECT_METHODS.every(method => connection.permissions.methods.includes(method))
 }
 
 interface ManifestSupport {
@@ -66,7 +62,9 @@ export async function connectApogee(): Promise<{
     params: {
       chains: [LIQUID_TESTNET_CHAIN_ID],
       methods: [...CONNECT_METHODS],
-      events: [...CONNECT_EVENTS],
+      // wallet_connectionChanged is part of the provider's always-available
+      // event surface. Apogee rejects attempts to request it as a permission.
+      events: [],
     },
   })
   if (
