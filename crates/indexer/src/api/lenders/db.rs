@@ -3,8 +3,8 @@ use sqlx::{PgPool, Postgres, QueryBuilder};
 use crate::api::OfferListQuery;
 use crate::api::db::{AssetSumRow, asset_amounts_from_rows};
 use crate::api::offers::dto::OfferListResponse;
-use crate::api::offers::list_query::fetch_participant_offers_list;
-use crate::api::query::attach_latest_participant_offers_scope;
+use crate::api::offers::list_query::fetch_participant_offers_list_for_scripts;
+use crate::api::query::attach_latest_participant_offers_scope_any;
 
 use crate::models::{OfferStatus, ParticipantType};
 
@@ -18,12 +18,12 @@ struct LenderCountsRow {
 
 #[tracing::instrument(
     name = "Fetching lender overview from DB",
-    skip(db, script_pubkey),
-    fields(script_pubkey = %hex::encode(script_pubkey))
+    skip(db, script_pubkeys),
+    fields(script_count = script_pubkeys.len())
 )]
 pub async fn fetch_overview(
     db: &PgPool,
-    script_pubkey: &[u8],
+    script_pubkeys: &[Vec<u8>],
 ) -> Result<LenderOverview, sqlx::Error> {
     let mut supplied_builder: QueryBuilder<Postgres> = QueryBuilder::new(
         r#"
@@ -33,10 +33,10 @@ pub async fn fetch_overview(
     );
     supplied_builder.push_bind(OfferStatus::Active);
     supplied_builder.push(" AND 1=1");
-    attach_latest_participant_offers_scope(
+    attach_latest_participant_offers_scope_any(
         &mut supplied_builder,
         ParticipantType::Lender,
-        script_pubkey,
+        script_pubkeys,
     );
     supplied_builder.push(" GROUP BY principal_asset_id");
 
@@ -55,10 +55,10 @@ pub async fn fetch_overview(
     );
     interest_builder.push_bind(OfferStatus::Active);
     interest_builder.push(" AND 1=1");
-    attach_latest_participant_offers_scope(
+    attach_latest_participant_offers_scope_any(
         &mut interest_builder,
         ParticipantType::Lender,
-        script_pubkey,
+        script_pubkeys,
     );
     interest_builder.push(" GROUP BY principal_asset_id");
 
@@ -84,10 +84,10 @@ pub async fn fetch_overview(
         WHERE 1=1
         "#,
     );
-    attach_latest_participant_offers_scope(
+    attach_latest_participant_offers_scope_any(
         &mut counts_builder,
         ParticipantType::Lender,
-        script_pubkey,
+        script_pubkeys,
     );
 
     let counts = counts_builder
@@ -105,8 +105,9 @@ pub async fn fetch_overview(
 
 pub async fn fetch_offer_list(
     db: &PgPool,
-    script_pubkey: &[u8],
+    script_pubkeys: &[Vec<u8>],
     query: &OfferListQuery,
 ) -> Result<OfferListResponse, sqlx::Error> {
-    fetch_participant_offers_list(db, query, ParticipantType::Lender, script_pubkey).await
+    fetch_participant_offers_list_for_scripts(db, query, ParticipantType::Lender, script_pubkeys)
+        .await
 }

@@ -7,7 +7,6 @@ use axum::{
 
 use crate::api::offers::dto::OfferListResponse;
 use crate::api::openapi::{ErrorResponse, LenderOffersParams, LenderOverviewParams};
-use crate::api::utils::parse_script_pubkey;
 use crate::api::{ApiError, AppState};
 
 use super::dto::LenderOverview;
@@ -30,7 +29,7 @@ pub async fn get_overview_by_script(
     State(state): State<Arc<AppState>>,
     Query(query): Query<LenderOverviewQuery>,
 ) -> Result<Json<LenderOverview>, ApiError> {
-    let script_bytes = parse_script_pubkey(&query.script_pubkey)?;
+    let script_bytes = query.parse()?;
 
     let overview = super::db::fetch_overview(&state.db, &script_bytes).await?;
 
@@ -54,7 +53,7 @@ pub async fn list_offers_by_script(
     State(state): State<Arc<AppState>>,
     Query(query): Query<LenderOffersQuery>,
 ) -> Result<Json<OfferListResponse>, ApiError> {
-    let script_bytes = parse_script_pubkey(&query.script_pubkey)?;
+    let script_bytes = query.scripts.parse()?;
 
     let offers = super::db::fetch_offer_list(&state.db, &script_bytes, &query.filters).await?;
 

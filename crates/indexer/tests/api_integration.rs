@@ -1360,3 +1360,87 @@ async fn lender_offers_returns_paginated_list_for_script() -> anyhow::Result<()>
     server_handle.abort();
     Ok(())
 }
+
+#[tokio::test]
+#[serial]
+async fn lender_portfolio_aggregates_rotating_owner_scripts() -> anyhow::Result<()> {
+    let pool = test_pool().await?;
+    let factory_id = Uuid::new_v4();
+    seed_factory_row(
+        &pool,
+        &factory_model(
+            factory_id,
+            FACTORY_CREATION_HEIGHT,
+            unique_32_bytes_from_uuid(factory_id),
+        ),
+    )
+    .await?;
+
+    let active_offer = seed_offer_graph(
+        &pool,
+        factory_id,
+        30,
+        OfferStatus::Active,
+        ACTIVE_OFFER_HEIGHT,
+    )
+    .await?;
+    let repaid_offer = seed_offer_graph(
+        &pool,
+        factory_id,
+        31,
+        OfferStatus::Repaid,
+        REPAID_OFFER_HEIGHT,
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE offer_participants
+        SET script_pubkey = $1
+        WHERE offer_id = $2
+          AND participant_type = $3
+          AND spent_txid IS NULL
+        "#,
+    )
+    .bind(vec![0x54, 0xac])
+    .bind(repaid_offer)
+    .bind(ParticipantType::Lender)
+    .execute(&pool)
+    .await?;
+
+    let (base_url, server_handle) = start_api(pool).await?;
+    let http = reqwest::Client::new();
+    let scripts = "53ac%2C54ac";
+
+    let overview = get_json(
+        &http,
+        format!("{base_url}/lenders/overview?script_pubkeys={scripts}"),
+    )
+    .await?;
+    assert_eq!(overview["active_loans"], 1);
+    assert_eq!(overview["to_be_claimed"], 1);
+
+    let offers = get_json(
+        &http,
+        format!("{base_url}/lenders/offers?script_pubkeys={scripts}"),
+    )
+    .await?;
+    assert_eq!(offers["total"], 2);
+    assert_ids_match_unordered(&offers["items"], &[active_offer, repaid_offer]);
+    assert_eq!(
+        participant_script(
+            find_list_item(&offers["items"], active_offer).expect("active offer"),
+            "lender"
+        ),
+        Some("53ac")
+    );
+    assert_eq!(
+        participant_script(
+            find_list_item(&offers["items"], repaid_offer).expect("repaid offer"),
+            "lender"
+        ),
+        Some("54ac")
+    );
+
+    server_handle.abort();
+    Ok(())
+}

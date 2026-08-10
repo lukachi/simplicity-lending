@@ -6,4 +6,5 @@ pub use list::{attach_offer_list_order_by, attach_paginate};
 pub use offers::{attach_offer_list_filters, attach_status_any};
 pub use participants::{
     attach_exclude_participant_script_scope, attach_latest_participant_offers_scope,
+    attach_latest_participant_offers_scope_any,
 };

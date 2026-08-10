@@ -62,15 +62,31 @@ pub struct BorrowerOffersParams {
 }
 
 /// OpenAPI query parameters for `GET /lenders/overview` (flat query string).
-pub type LenderOverviewParams = ScriptQuery;
+#[derive(IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct LenderOverviewParams {
+    /// One wallet script pubkey hex (legacy single-script form).
+    #[param(example = "00144f883a4bb668547b534ae815bc32628893b6f435")]
+    pub script_pubkey: Option<String>,
+    /// Comma-separated rotating wallet script pubkeys (maximum 64 unique scripts).
+    #[param(
+        example = "00144f883a4bb668547b534ae815bc32628893b6f435,0014d0c4a3ef09e887b6e99e397e518fe3e41a118ca1"
+    )]
+    pub script_pubkeys: Option<String>,
+}
 
 /// OpenAPI query parameters for `GET /lenders/offers` (flat query string).
 #[derive(IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct LenderOffersParams {
-    /// Wallet script pubkey hex.
+    /// One wallet script pubkey hex (legacy single-script form).
     #[param(example = "00144f883a4bb668547b534ae815bc32628893b6f435")]
-    pub script_pubkey: String,
+    pub script_pubkey: Option<String>,
+    /// Comma-separated rotating wallet script pubkeys (maximum 64 unique scripts).
+    #[param(
+        example = "00144f883a4bb668547b534ae815bc32628893b6f435,0014d0c4a3ef09e887b6e99e397e518fe3e41a118ca1"
+    )]
+    pub script_pubkeys: Option<String>,
     /// Comma-separated offer states, e.g. `pending,active`.
     #[param(example = "pending,active")]
     pub status: Option<String>,

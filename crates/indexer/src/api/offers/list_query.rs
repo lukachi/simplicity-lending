@@ -6,8 +6,8 @@ use simplex::simplicityhl::elements::hex::ToHex;
 
 use crate::api::OfferListQuery;
 use crate::api::query::{
-    attach_latest_participant_offers_scope, attach_offer_list_filters, attach_offer_list_order_by,
-    attach_paginate,
+    attach_latest_participant_offers_scope, attach_latest_participant_offers_scope_any,
+    attach_offer_list_filters, attach_offer_list_order_by, attach_paginate,
 };
 use crate::api::utils::{format_hex, format_offer_id};
 
@@ -46,7 +46,40 @@ pub async fn fetch_participant_offers_list(
     participant_type: ParticipantType,
     script_pubkey: &[u8],
 ) -> Result<OfferListResponse, sqlx::Error> {
-    fetch_paginated_short_offers(db, query, Some((participant_type, script_pubkey))).await
+    fetch_paginated_short_offers(
+        db,
+        query,
+        Some(ParticipantScope::Single(participant_type, script_pubkey)),
+    )
+    .await
+}
+
+pub async fn fetch_participant_offers_list_for_scripts(
+    db: &PgPool,
+    query: &OfferListQuery,
+    participant_type: ParticipantType,
+    script_pubkeys: &[Vec<u8>],
+) -> Result<OfferListResponse, sqlx::Error> {
+    fetch_paginated_short_offers(
+        db,
+        query,
+        Some(ParticipantScope::Many(participant_type, script_pubkeys)),
+    )
+    .await
+}
+
+#[derive(Clone, Copy)]
+enum ParticipantScope<'a> {
+    Single(ParticipantType, &'a [u8]),
+    Many(ParticipantType, &'a [Vec<u8>]),
+}
+
+impl ParticipantScope<'_> {
+    fn role(self) -> ParticipantType {
+        match self {
+            Self::Single(role, _) | Self::Many(role, _) => role,
+        }
+    }
 }
 
 #[tracing::instrument(
@@ -63,13 +96,13 @@ pub async fn fetch_participant_offers_list(
         exclude_participant = query.exclude_participant_for_sql().is_some(),
         sort_by = ?query.sort_by,
         sort_dir = ?query.sort_dir,
-        participant_role = ?participant.map(|(role, _)| role),
+        participant_role = ?participant.map(ParticipantScope::role),
     )
 )]
 async fn fetch_paginated_short_offers(
     db: &PgPool,
     query: &OfferListQuery,
-    participant: Option<(ParticipantType, &[u8])>,
+    participant: Option<ParticipantScope<'_>>,
 ) -> Result<OfferListResponse, sqlx::Error> {
     let limit = query.effective_limit();
     let offset = query.effective_offset();
@@ -104,10 +137,20 @@ async fn fetch_paginated_short_offers(
 fn attach_offer_list_where<'a>(
     query_builder: &mut QueryBuilder<'a, Postgres>,
     query: &'a OfferListQuery,
-    participant: Option<(ParticipantType, &'a [u8])>,
+    participant: Option<ParticipantScope<'a>>,
 ) {
-    if let Some((participant_type, script_pubkey)) = participant {
-        attach_latest_participant_offers_scope(query_builder, participant_type, script_pubkey);
+    match participant {
+        Some(ParticipantScope::Single(participant_type, script_pubkey)) => {
+            attach_latest_participant_offers_scope(query_builder, participant_type, script_pubkey);
+        }
+        Some(ParticipantScope::Many(participant_type, script_pubkeys)) => {
+            attach_latest_participant_offers_scope_any(
+                query_builder,
+                participant_type,
+                script_pubkeys,
+            );
+        }
+        None => {}
     }
     attach_offer_list_filters(query_builder, query);
 }
