@@ -11,8 +11,9 @@ import {
 
 export const LIQUID_TESTNET_CHAIN_ID = 'bip122:a771da8e52ee6ad581ed1e9a99825e5b'
 export const SIMPLICITY_LENDING_V3_BUNDLE_HASH =
-  'sha256:a85cd2b87a5c763a5e8db463a4784a0861b8994b3e3ae276fde36a3d72b1bcde' as const
+  'sha256:0a57b34e20a46f0a3ec60d6be4904eebc9d3807bb6a2fbab0c66abdcdc05af8e' as const
 export const ACCEPT_OFFER_ACTION = 'lending_contract.AcceptOffer'
+export const CLAIM_LENDER_VAULT_ACTION = 'lending_contract.ClaimLenderVault'
 
 const CONNECT_METHODS = ['experimental_executeTxManifest', 'getBalance'] as const
 
@@ -45,9 +46,12 @@ async function requireManifestSupport(provider: LiquidProvider): Promise<void> {
   if (
     !isManifestSupport(support) ||
     !support.supported ||
-    !support.supportedActions?.includes(ACCEPT_OFFER_ACTION)
+    !support.supportedActions?.includes(ACCEPT_OFFER_ACTION) ||
+    !support.supportedActions.includes(CLAIM_LENDER_VAULT_ACTION)
   ) {
-    throw new Error('This version of Apogee does not support Simplicity Lending offer acceptance.')
+    throw new Error(
+      'This version of Apogee does not support the required Simplicity Lending actions.',
+    )
   }
 }
 

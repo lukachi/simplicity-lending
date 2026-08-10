@@ -46,7 +46,10 @@ export default function OfferActionModal({
   const resolvedAction = offer
     ? resolveOfferAction(offer, portfolioScripts, currentBlockHeight, isReady)
     : 'none'
-  const liveAction = backend === 'apogee' && resolvedAction !== 'accept' ? 'none' : resolvedAction
+  const liveAction =
+    backend === 'apogee' && resolvedAction !== 'accept' && resolvedAction !== 'claim-interest'
+      ? 'none'
+      : resolvedAction
 
   const isBlockedByOtherTx =
     !sameOfferPendingTx && liveAction !== 'none' && Boolean(getMempoolBlockingTx(pendingTxs))
