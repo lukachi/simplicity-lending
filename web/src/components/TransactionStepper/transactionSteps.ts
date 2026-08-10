@@ -29,3 +29,18 @@ export function getStandardTransactionSteps(
 ): TransactionStep<StandardStage>[] {
   return STANDARD_STAGE_ORDER.map(stage => ({ id: stage, ...getStageLabel(stage, signerType) }))
 }
+
+export function getManifestTransactionSteps(): TransactionStep<'preparing' | 'wallet'>[] {
+  return [
+    {
+      id: 'preparing',
+      title: 'Preparing Request',
+      subtitle: 'Verifying the offer and saving a safe retry id',
+    },
+    {
+      id: 'wallet',
+      title: 'Review in Apogee',
+      subtitle: 'Apogee builds, reviews, signs, and broadcasts the transaction',
+    },
+  ]
+}

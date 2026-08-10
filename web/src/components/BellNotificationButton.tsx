@@ -36,14 +36,14 @@ function PendingTxRow({ tx }: { tx: PendingTxRecord }) {
 }
 
 export function BellNotificationButton() {
-  const { connectionStatus, reconnecting, syncing, receiveAddress } = useWallet()
+  const { accountIdentifier, connectionStatus, reconnecting, syncing, receiveAddress } = useWallet()
   const { pendingTxs } = usePendingTransactions()
   const [isOpen, setIsOpen] = useState(false)
   const activeCount = pendingTxs.filter(tx => tx.confirmationStatus !== 'failed').length
 
   const isTransitional =
     reconnecting || connectionStatus === 'locked' || (syncing && connectionStatus !== 'ready')
-  const isReady = connectionStatus === 'ready' && Boolean(receiveAddress)
+  const isReady = connectionStatus === 'ready' && Boolean(receiveAddress ?? accountIdentifier)
 
   if (!isReady && !isTransitional) return null
 

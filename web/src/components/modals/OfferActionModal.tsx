@@ -38,12 +38,15 @@ export default function OfferActionModal({
   onClose,
   onSuccess,
 }: OfferActionModalProps) {
-  const { scriptPubkey } = useWallet()
+  const { backend, isReady, portfolioScripts } = useWallet()
   const { data: currentBlockHeight } = useBlockHeight()
   const { pendingTxs } = usePendingTransactions()
 
   const sameOfferPendingTx = offer ? getOfferPendingTx(offer.id, pendingTxs) : null
-  const liveAction = offer ? resolveOfferAction(offer, scriptPubkey, currentBlockHeight) : 'none'
+  const resolvedAction = offer
+    ? resolveOfferAction(offer, portfolioScripts, currentBlockHeight, isReady)
+    : 'none'
+  const liveAction = backend === 'apogee' && resolvedAction !== 'accept' ? 'none' : resolvedAction
 
   const isBlockedByOtherTx =
     !sameOfferPendingTx && liveAction !== 'none' && Boolean(getMempoolBlockingTx(pendingTxs))

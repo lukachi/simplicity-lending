@@ -9,8 +9,8 @@ import { useWallet } from '@/providers/wallet/useWallet'
 
 export function IndexerSubscription(): null {
   const queryClient = useQueryClient()
-  const { scriptPubkey } = useWallet()
-  const contextRef = useLatestRef({ queryClient, scriptPubkey })
+  const { portfolioScripts } = useWallet()
+  const contextRef = useLatestRef({ queryClient, scriptPubkeys: portfolioScripts })
 
   useEffect(() => {
     const source = new EventSource(`${env.VITE_API_URL}/events`)

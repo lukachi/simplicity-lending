@@ -4,12 +4,17 @@ import { normalizeHex } from './hex'
 
 export type ActorRole = 'lender' | 'borrower' | 'guest'
 
-export function resolveActorRole(offer: OfferShort, walletScriptPubkey: string | null): ActorRole {
-  if (!walletScriptPubkey) return 'guest'
-  const mine = normalizeHex(walletScriptPubkey)
-  const match = offer.participants.find(p => normalizeHex(p.script_pubkey) === mine)
+export function resolveActorRole(
+  offer: OfferShort,
+  walletScriptPubkeys: readonly string[],
+  canAcceptOffers = false,
+): ActorRole {
+  const mine = new Set(walletScriptPubkeys.map(normalizeHex))
+  const match = offer.participants.find(p => mine.has(normalizeHex(p.script_pubkey)))
   if (match) return match.participant_type
-  if (offer.status === 'pending') return 'lender'
+  if (offer.status === 'pending' && (walletScriptPubkeys.length > 0 || canAcceptOffers)) {
+    return 'lender'
+  }
   return 'guest'
 }
 
@@ -54,10 +59,11 @@ function resolveBorrowerAction(offer: OfferShort): OfferAction {
 
 export function resolveOfferAction(
   offer: OfferShort,
-  walletScriptPubkey: string | null,
+  walletScriptPubkeys: readonly string[],
   currentBlockHeight: number,
+  canAcceptOffers = false,
 ): OfferAction {
-  const role = resolveActorRole(offer, walletScriptPubkey)
+  const role = resolveActorRole(offer, walletScriptPubkeys, canAcceptOffers)
   const expired = isOfferExpired(offer, currentBlockHeight)
 
   switch (role) {

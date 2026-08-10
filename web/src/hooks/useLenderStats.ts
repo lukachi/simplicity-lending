@@ -22,15 +22,14 @@ export interface UseLenderStatsResult {
 }
 
 export function useLenderStats(): UseLenderStatsResult {
-  const { isReady, confirmedBalances, pendingBalances, scriptPubkey } = useWallet()
-  const script = scriptPubkey ?? ''
+  const { isReady, confirmedBalances, pendingBalances, portfolioScripts } = useWallet()
 
   const {
     data: overview,
     isLoading: overviewLoading,
     error: overviewError,
     refetch: refetchOverview,
-  } = useLenderOverview(script)
+  } = useLenderOverview(portfolioScripts)
 
   const refetch = useCallback(() => {
     refetchOverview()

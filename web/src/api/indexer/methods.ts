@@ -29,6 +29,18 @@ function buildSearchUrl(path: string, params: Record<string, string>): string {
   return query ? `${env.VITE_API_URL}${path}?${query}` : `${env.VITE_API_URL}${path}`
 }
 
+function normalizeWalletScripts(scriptPubkeys: readonly string[]): string[] {
+  return [...new Set(scriptPubkeys.map(normalizeHex).filter(Boolean))].sort()
+}
+
+function toLenderScriptQuery(scriptPubkeys: readonly string[]): Record<string, string> {
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  if (scripts.length === 0) throw new Error('At least one lender script pubkey is required')
+  return scripts.length === 1
+    ? { script_pubkey: scripts[0] }
+    : { script_pubkeys: scripts.join(',') }
+}
+
 export type SortDir = 'asc' | 'desc'
 
 export type SortField =
@@ -133,22 +145,20 @@ export async function fetchBorrowerOffers(
 }
 
 export async function fetchLenderOverview(
-  scriptPubkeyHex: string,
+  scriptPubkeys: readonly string[],
   options: RequestParams = {},
 ): Promise<LenderOverview> {
-  const url = buildSearchUrl('/lenders/overview', {
-    script_pubkey: normalizeHex(scriptPubkeyHex),
-  })
+  const url = buildSearchUrl('/lenders/overview', toLenderScriptQuery(scriptPubkeys))
   return requestJson(url, lenderOverviewSchema, { signal: options.signal })
 }
 
 export async function fetchLenderOffers(
-  scriptPubkeyHex: string,
+  scriptPubkeys: readonly string[],
   params: ListOffersParams = {},
   options: RequestParams = {},
 ): Promise<OfferListResponse> {
   const url = buildSearchUrl('/lenders/offers', {
-    script_pubkey: normalizeHex(scriptPubkeyHex),
+    ...toLenderScriptQuery(scriptPubkeys),
     ...toQueryParams(params),
   })
   return requestJson(url, offerListResponseSchema, { signal: options.signal })

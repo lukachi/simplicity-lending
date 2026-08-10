@@ -20,11 +20,15 @@ export const borrowerQueryKeys = {
 
 export const lenderQueryKeys = {
   all: () => ['lender'] as const,
-  overview: (scriptPubkeyHex: string) =>
-    ['lender', 'overview', normalizeHex(scriptPubkeyHex)] as const,
-  offers: (scriptPubkeyHex: string, params: ListOffersParams = {}) =>
-    ['lender', 'offers', normalizeHex(scriptPubkeyHex), toQueryParams(params)] as const,
+  overview: (scriptPubkeys: readonly string[]) =>
+    ['lender', 'overview', normalizeScriptSet(scriptPubkeys)] as const,
+  offers: (scriptPubkeys: readonly string[], params: ListOffersParams = {}) =>
+    ['lender', 'offers', normalizeScriptSet(scriptPubkeys), toQueryParams(params)] as const,
 } as const
+
+function normalizeScriptSet(scriptPubkeys: readonly string[]): string[] {
+  return [...new Set(scriptPubkeys.map(normalizeHex).filter(Boolean))].sort()
+}
 
 export const factoryQueryKeys = {
   all: () => ['factories'] as const,

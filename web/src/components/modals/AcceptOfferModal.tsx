@@ -11,6 +11,7 @@ import OfferDetailsBody from '@/components/modals/OfferDetailsBody'
 import { OfferStatusChip } from '@/components/OfferStatusChip'
 import { NETWORK_CONFIG } from '@/constants/network-config'
 import { useAcceptOffer } from '@/hooks/useAcceptOffer'
+import { useApogeeAcceptOffer } from '@/hooks/useApogeeAcceptOffer'
 import { useFormatAmount } from '@/hooks/useFormatAmount'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
 import {
@@ -43,16 +44,20 @@ export default function AcceptOfferModal({
   onSuccess,
 }: AcceptOfferModalProps) {
   const { principalAsset } = NETWORK_CONFIG
-  const { syncWallet, getBlindedWalletUtxos, scriptPubkey, confirmedBalances } = useWallet()
+  const { backend, syncWallet, getBlindedWalletUtxos, scriptPubkey, confirmedBalances } =
+    useWallet()
   const { lwkNetwork } = useLwk()
   const { acceptOffer } = useAcceptOffer()
+  const { acceptOffer: acceptOfferWithApogee } = useApogeeAcceptOffer()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx } = usePendingTransactions()
   const { formatCollateralDisplay, formatPrincipalAmount } = useFormatAmount()
 
-  const acceptBorrowOffer = () =>
-    runStandardTransactionFlow(async () => {
-      const fullOffer = await fetchOffer(offer.id)
+  const acceptBorrowOffer = async () => {
+    const fullOffer = await fetchOffer(offer.id)
+    if (backend === 'apogee') return acceptOfferWithApogee(fullOffer)
+
+    return runStandardTransactionFlow(async () => {
       const pendingOfferOutpoint = resolvePendingOutpoint(fullOffer)
       if (!pendingOfferOutpoint) throw new Error('Pending offer UTXO not found')
 
@@ -88,6 +93,7 @@ export default function AcceptOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+  }
 
   const { mutate, reset, data, status } = useMutation({
     mutationFn: acceptBorrowOffer,
@@ -100,18 +106,21 @@ export default function AcceptOfferModal({
         previousOfferStatus: 'pending',
         expectedOfferStatus: 'active',
       })
+      if (backend === 'apogee') void syncWallet()
     },
   })
 
   const { data: feeRate = FALLBACK_FEE_RATE_SAT_PER_KVB } = useQuery({
     queryKey: esploraQueryKeys.feeRate,
     queryFn: () => fetchFeeRateSatPerKvb(),
+    enabled: backend !== 'apogee',
   })
   const feeBuffer =
     principalAsset.id === lwkNetwork.policyAsset().toString()
       ? estimateFeeBudgetSats(ACCEPT_WEIGHT_UNITS, feeRate)
       : 0n
   const insufficientBalance =
+    backend !== 'apogee' &&
     BigInt(confirmedBalances[principalAsset.id] ?? 0) < offer.principal_amount + feeBuffer
 
   const txSummary = useMemo(

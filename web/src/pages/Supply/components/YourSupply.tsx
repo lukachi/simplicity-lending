@@ -12,7 +12,7 @@ import { useWallet } from '@/providers/wallet/useWallet'
 const SUPPLY_PAGE_SIZE = 10
 
 export default function YourSupply() {
-  const { scriptPubkey } = useWallet()
+  const { portfolioScripts } = useWallet()
   const { data: currentBlockHeight } = useBlockHeight()
 
   const { page, setPage, params, sort, setSort, statusFilter, setStatusFilter } =
@@ -23,7 +23,7 @@ export default function YourSupply() {
     isLoading,
     error,
     refetch,
-  } = useLenderOffers(scriptPubkey ?? '', params, {
+  } = useLenderOffers(portfolioScripts, params, {
     placeholderData: keepPreviousData,
   })
 

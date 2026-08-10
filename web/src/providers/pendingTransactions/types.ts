@@ -15,7 +15,10 @@ export type PendingTxConfirmationStatus = 'processing' | 'confirmed' | 'finalize
 export interface PendingTxRecord {
   txid: string
   kind: PendingTxKind
-  walletScriptPubkey: string
+  /** Stable local persistence scope: account identity for providers, script for local wallets. */
+  walletScope: string
+  /** Present for local-wallet borrower actions and legacy records. */
+  walletScriptPubkey?: string
   offerId?: string
   previousOfferStatus?: OfferStatus
   expectedOfferStatus?: OfferStatus
@@ -32,7 +35,7 @@ export interface PendingTxRecord {
 export interface AddPendingTxInput {
   txid: string
   kind: PendingTxKind
-  walletScriptPubkey: string
+  walletScriptPubkey?: string
   offerId?: string
   previousOfferStatus?: OfferStatus
   expectedOfferStatus?: OfferStatus

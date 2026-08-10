@@ -107,12 +107,12 @@ function toNotification(
 
 export function buildOfferNotifications(
   offers: OfferShort[],
-  scriptPubkey: string | null,
+  scriptPubkeys: readonly string[],
   currentBlockHeight: number | undefined,
 ): OfferNotification[] {
   const list: OfferNotification[] = []
   for (const offer of offers) {
-    const action = resolveOfferAction(offer, scriptPubkey, currentBlockHeight ?? 0)
+    const action = resolveOfferAction(offer, scriptPubkeys, currentBlockHeight ?? 0)
     if (action === 'accept' || action === 'none') continue
     if (shouldNotify(action, offer, currentBlockHeight)) {
       list.push(toNotification(offer, action, currentBlockHeight))

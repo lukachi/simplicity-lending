@@ -112,46 +112,46 @@ export function useAllBorrowerOffers(
 }
 
 export function useLenderOverview(
-  scriptPubkeyHex: string,
+  scriptPubkeys: readonly string[],
   options: ExtraQueryOptions<LenderOverview> = {},
 ): UseQueryResult<LenderOverview> {
   return useQuery({
-    queryKey: lenderQueryKeys.overview(scriptPubkeyHex),
-    queryFn: ({ signal }) => fetchLenderOverview(scriptPubkeyHex, { signal }),
+    queryKey: lenderQueryKeys.overview(scriptPubkeys),
+    queryFn: ({ signal }) => fetchLenderOverview(scriptPubkeys, { signal }),
     staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
-    enabled: !!scriptPubkeyHex,
+    enabled: scriptPubkeys.length > 0,
   })
 }
 
 export function useLenderOffers(
-  scriptPubkeyHex: string,
+  scriptPubkeys: readonly string[],
   params: ListOffersParams = {},
   options: ExtraQueryOptions<OfferListResponse> = {},
 ): UseQueryResult<OfferListResponse> {
   return useQuery({
-    queryKey: lenderQueryKeys.offers(scriptPubkeyHex, params),
-    queryFn: ({ signal }) => fetchLenderOffers(scriptPubkeyHex, params, { signal }),
+    queryKey: lenderQueryKeys.offers(scriptPubkeys, params),
+    queryFn: ({ signal }) => fetchLenderOffers(scriptPubkeys, params, { signal }),
     staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
     placeholderData: options.placeholderData,
-    enabled: !!scriptPubkeyHex,
+    enabled: scriptPubkeys.length > 0,
   })
 }
 
 export function useAllLenderOffers(
-  scriptPubkeyHex: string,
+  scriptPubkeys: readonly string[],
   params: ListOffersParams = {},
   options: ExtraQueryOptions<OfferShort[]> = {},
 ): UseQueryResult<OfferShort[]> {
   return useQuery({
-    queryKey: lenderQueryKeys.offers(scriptPubkeyHex, params),
+    queryKey: lenderQueryKeys.offers(scriptPubkeys, params),
     queryFn: ({ signal }) =>
       fetchAllOfferPages(
-        pageParams => fetchLenderOffers(scriptPubkeyHex, pageParams, { signal }),
+        pageParams => fetchLenderOffers(scriptPubkeys, pageParams, { signal }),
         params,
       ),
     staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
     placeholderData: options.placeholderData,
-    enabled: !!scriptPubkeyHex,
+    enabled: scriptPubkeys.length > 0,
   })
 }
 

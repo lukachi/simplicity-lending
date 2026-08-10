@@ -28,19 +28,20 @@ import { DataRow } from './DataRow'
 
 export function SupplyCard() {
   const navigate = useNavigate()
-  const { scriptPubkey } = useWallet()
+  const { backend, portfolioScripts } = useWallet()
   const { balance, pendingBalance, stats, isLoading, error, refetch } = useLenderStats()
   const principalPriceUsd = useAssetPriceUsd(NETWORK_CONFIG.principalAsset.id)
   const balanceUsd = formatUsd(balance, NETWORK_CONFIG.principalAsset.decimals, principalPriceUsd)
   const { pendingTxs } = usePendingTransactions()
   const { data: currentBlockHeight } = useBlockHeight()
-  const offersQuery = useAllLenderOffers(scriptPubkey ?? '', { status: ['active', 'repaid'] })
+  const offersQuery = useAllLenderOffers(portfolioScripts, { status: ['active', 'repaid'] })
 
-  const notifications = buildOfferNotifications(
+  const offerNotifications = buildOfferNotifications(
     offersQuery.data ?? [],
-    scriptPubkey,
+    portfolioScripts,
     currentBlockHeight,
   ).filter(n => !getOfferPendingTx(n.offer.id, pendingTxs))
+  const notifications = backend === 'apogee' ? [] : offerNotifications
 
   useEffect(() => {
     if (error) ErrorHandler.processWithRetry(error, refetch, 'Failed to load your supply.')

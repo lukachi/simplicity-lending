@@ -3,6 +3,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { env } from '@/constants/env'
 import { useSessionStorage } from '@/hooks/useSessionStorage'
+import {
+  connectApogee,
+  disconnectApogee,
+  executeApogeeTxManifest,
+  getApogeeBalances,
+  resumeApogee,
+} from '@/lib/liquid-provider/apogee'
+import { forgetApogeeProvider } from '@/lib/liquid-provider/discovery'
+import { apogeeWalletScope, loadPortfolioScripts } from '@/lib/liquid-provider/storage'
+import {
+  isLiquidConnection,
+  type LiquidConnection,
+  type LiquidProvider,
+  liquidProviderErrorCode,
+  type TxManifestInvocation,
+} from '@/lib/liquid-provider/types'
 import { JadeBusyError, JadeDisconnectedError } from '@/lib/wallet-core/connector/errors'
 import { JadeConnector } from '@/lib/wallet-core/connector/jade'
 import { SeedConnector } from '@/lib/wallet-core/connector/seed'
@@ -18,6 +34,7 @@ import {
 } from '@/lib/wallet-core/wallet/sync'
 import { createEsploraClient } from '@/lwk'
 import { useLwk } from '@/providers/lwk/useLwk'
+import { recoverLenderPortfolioScripts } from '@/simplicity/lending/apogee'
 import { ErrorHandler } from '@/utils/errorHandler'
 
 import {
@@ -33,11 +50,17 @@ import { WalletContext } from './WalletContext'
 const SESSION_STORAGE_KEY = 'jade_wallet_session'
 const BALANCE_POLL_INTERVAL_MS = 60_000
 const MIN_SYNC_GAP_MS = 15_000
+const MANIFEST_RECOVERY_POLL_MS = 15_000
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const { lwkNetwork, network } = useLwk()
 
   const sessionRef = useRef<WalletSession | null>(null)
+  const apogeeSessionRef = useRef<{
+    provider: LiquidProvider
+    connection: LiquidConnection
+    unsubscribe: () => void
+  } | null>(null)
   const connectingRef = useRef(false)
   // Cancels the in-flight SideSwap login/sign request, if any.
   const pendingCancelRef = useRef<(() => Promise<void>) | null>(null)
@@ -55,20 +78,60 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WalletState>(INITIAL_WALLET_STATE)
   const [savedSession, setSavedSession] = useSessionStorage<SavedSession>(SESSION_STORAGE_KEY)
 
+  useEffect(() => {
+    if (state.backend !== 'apogee' || !state.walletScope) return
+    const scope = state.walletScope
+    let cancelled = false
+    let recovering = false
+    const recover = async () => {
+      if (recovering) return
+      recovering = true
+      try {
+        const scripts = await recoverLenderPortfolioScripts(scope)
+        if (cancelled || scripts.length === 0) return
+        setState(current => ({
+          ...current,
+          portfolioScripts: [...new Set([...current.portfolioScripts, ...scripts])].sort(),
+        }))
+      } catch (error) {
+        console.warn('Failed to recover Apogee lender portfolio scripts.', error)
+      } finally {
+        recovering = false
+      }
+    }
+    void recover()
+    const id = setInterval(() => void recover(), MANIFEST_RECOVERY_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [state.backend, state.walletScope])
+
   const endSession = useCallback(
     async ({
       error,
       cachePolicy = 'preserve',
-    }: { error?: string; cachePolicy?: CachePolicy } = {}) => {
+      disconnectProvider = true,
+    }: {
+      error?: string
+      cachePolicy?: CachePolicy
+      disconnectProvider?: boolean
+    } = {}) => {
       connectionChangeCounterRef.current++
       const session = sessionRef.current
       sessionRef.current = null
+      const apogeeSession = apogeeSessionRef.current
+      apogeeSessionRef.current = null
       // A scan started by the ended session keeps running, and its own bookkeeping is skipped
       // as stale, so the flag is cleared here or the next session could never sync.
       syncInFlightRef.current = false
       // Reset UI immediately. Connector teardown runs in background and may hang if the device
       // was unplugged mid-session.
       session?.connector.disconnect().catch(console.warn)
+      apogeeSession?.unsubscribe()
+      if (disconnectProvider && apogeeSession) {
+        disconnectApogee(apogeeSession.provider).catch(console.warn)
+      }
       setSavedSession(null)
       setState(s => ({
         ...INITIAL_WALLET_STATE,
@@ -152,24 +215,32 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     const refreshBalances = () => {
       const session = sessionRef.current
-      if (!session) return
+      const apogeeSession = apogeeSessionRef.current
+      if (!session && !apogeeSession) return
       // A scan re-downloads the whole history listing even when nothing changed, and a tab
       // activation fires both listeners below, so repeated triggers are collapsed here.
       if (syncInFlightRef.current) return
       if (Date.now() - lastSyncAtRef.current < MIN_SYNC_GAP_MS) return
       syncInFlightRef.current = true
       const attempt = connectionChangeCounterRef.current
-      syncBalances(session.wollet, session.esploraClient)
-        .then(() => {
+      const refresh = apogeeSession
+        ? getApogeeBalances(apogeeSession.provider, apogeeSession.connection).then(balances => ({
+            total: balances,
+            confirmed: balances,
+            pending: {},
+          }))
+        : syncBalances(session!.wollet, session!.esploraClient).then(() => {
+            const confirmedTxids = reconcilePendingBroadcasts(
+              session!.wollet,
+              pendingBroadcastsRef.current,
+            )
+            confirmedTxids.forEach(txid => pendingBroadcastsRef.current.delete(txid))
+            return readWalletBalances(session!.wollet)
+          })
+
+      refresh
+        .then(({ total, confirmed, pending }) => {
           if (attempt !== connectionChangeCounterRef.current) return
-
-          const confirmedTxids = reconcilePendingBroadcasts(
-            session.wollet,
-            pendingBroadcastsRef.current,
-          )
-          confirmedTxids.forEach(txid => pendingBroadcastsRef.current.delete(txid))
-
-          const { total, confirmed, pending } = readWalletBalances(session.wollet)
           setState(s => ({
             ...s,
             balances: total,
@@ -177,7 +248,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             pendingBalances: pending,
           }))
         })
-        .catch(console.warn)
+        .catch(error => {
+          if (liquidProviderErrorCode(error) === 4900) {
+            forgetApogeeProvider()
+            const message = error instanceof Error ? error.message : String(error)
+            void endSession({ error: message, disconnectProvider: false })
+            return
+          }
+          console.warn(error)
+        })
         .finally(() => {
           if (attempt !== connectionChangeCounterRef.current) return
           syncInFlightRef.current = false
@@ -201,14 +280,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('focus', refreshBalances)
     }
-  }, [state.connectionStatus])
+  }, [endSession, state.connectionStatus])
 
   const connect = useCallback(
     async (variant: WalletType, options?: ConnectOptions) => {
-      if (sessionRef.current !== null || connectingRef.current) return
+      if (sessionRef.current !== null || apogeeSessionRef.current !== null || connectingRef.current)
+        return
       connectingRef.current = true
       const attempt = ++connectionChangeCounterRef.current
 
+      const useApogee = options?.apogee === true
       const useSideSwap = options?.sideswap === true
       // seedMnemonic is a runtime choice from the demo-mode seed connect form; falling back to
       // VITE_DEBUG_MNEMONIC preserves the existing local-dev auto-connect behavior.
@@ -218,10 +299,69 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setState(s => ({ ...s, syncing: true, error: null, isError: false }))
 
       let connector: WalletConnector | null = null
+      let openedApogeeProvider: LiquidProvider | null = null
       // Set once the cache holds the cross-tab persist lock, so an attempt invalidated
       // after that point releases it instead of blocking the next connect.
       let openedCache: WalletCache | null = null
       try {
+        if (useApogee) {
+          if (network !== 'liquidtestnet') {
+            throw new Error('Apogee TX Manifest lending is currently available only on testnet.')
+          }
+          const connected = options?.resumeOnly ? await resumeApogee() : await connectApogee()
+          if (!connected) {
+            setSavedSession(null)
+            setState(s => ({ ...INITIAL_WALLET_STATE, usbDeviceDetected: s.usbDeviceDetected }))
+            return
+          }
+          if (attempt !== connectionChangeCounterRef.current) return
+
+          const { provider, connection } = connected
+          openedApogeeProvider = provider
+          const scope = apogeeWalletScope(connection.chainId, connection.accountIdentifier)
+          const [balances, portfolioScripts] = await Promise.all([
+            getApogeeBalances(provider, connection),
+            loadPortfolioScripts(scope),
+          ])
+          if (attempt !== connectionChangeCounterRef.current) return
+
+          const unsubscribe = provider.on({
+            event: 'wallet_connectionChanged',
+            listener: payload => {
+              if (
+                !isLiquidConnection(payload) ||
+                payload.accountIdentifier !== connection.accountIdentifier ||
+                payload.chainId !== connection.chainId ||
+                !payload.permissions.methods.includes('experimental_executeTxManifest') ||
+                !payload.permissions.methods.includes('getBalance')
+              ) {
+                void endSession({ disconnectProvider: false })
+              }
+            },
+          })
+          apogeeSessionRef.current = { provider, connection, unsubscribe }
+          openedApogeeProvider = null
+          setSavedSession({ backend: 'apogee' })
+          setState(s => ({
+            ...INITIAL_WALLET_STATE,
+            usbDeviceDetected: s.usbDeviceDetected,
+            backend: 'apogee',
+            connectionStatus: 'ready',
+            connectorId: 'apogee',
+            signerType: 'apogee',
+            balances,
+            confirmedBalances: balances,
+            pendingBalances: {},
+            accountIdentifier: connection.accountIdentifier,
+            chainId: connection.chainId,
+            walletScope: scope,
+            portfolioScripts,
+            hasBalanceBreakdown: false,
+            syncing: false,
+          }))
+          return
+        }
+
         if (useSideSwap && !env.VITE_SIDESWAP_WS_URL) {
           throw new Error('VITE_SIDESWAP_WS_URL is not set')
         }
@@ -319,6 +459,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
         setState(s => ({
           ...s,
+          backend: 'local',
           connectionStatus: 'ready',
           syncing: false,
           error: null,
@@ -328,13 +469,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           pendingBalances,
           receiveAddress,
           scriptPubkey,
+          walletScope: scriptPubkey,
+          portfolioScripts: [scriptPubkey],
+          hasBalanceBreakdown: true,
         }))
       } catch (err) {
         openedCache?.close().catch(console.warn)
+        openedApogeeProvider?.request({ method: 'wallet_disconnect' }).catch(console.warn)
         if (attempt !== connectionChangeCounterRef.current) {
           connector?.disconnect().catch(console.warn)
           return
         }
+        if (liquidProviderErrorCode(err) === 4900) forgetApogeeProvider()
         ErrorHandler.process(err)
         const error = err instanceof Error ? err.message : String(err)
         // Not awaited — same hang risk as in disconnect(): update state immediately
@@ -351,11 +497,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         connectingRef.current = false
       }
     },
-    [lwkNetwork, network, setSavedSession],
+    [endSession, lwkNetwork, network, setSavedSession],
   )
 
   const resumeSession = useCallback(async () => {
     if (!savedSession) return
+    if (savedSession.backend === 'apogee') {
+      await connect(DEFAULT_WALLET_TYPE, { apogee: true, resumeOnly: true })
+      return
+    }
     await connect(savedSession.walletType, {
       seedMnemonic: savedSession.seedMnemonic,
       sideswap: savedSession.sideswap,
@@ -375,7 +525,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const sync = useCallback(async () => {
     const session = sessionRef.current
-    if (!session) throw new Error('WalletProvider: not connected')
+    const apogeeSession = apogeeSessionRef.current
+    if (!session && !apogeeSession) throw new Error('WalletProvider: not connected')
 
     setState(s => ({ ...s, syncing: true, error: null }))
     // A manual sync follows a broadcast, so it runs regardless of the throttle, but still
@@ -384,6 +535,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const attempt = connectionChangeCounterRef.current
 
     try {
+      if (apogeeSession) {
+        const balances = await getApogeeBalances(apogeeSession.provider, apogeeSession.connection)
+        if (attempt !== connectionChangeCounterRef.current) return
+        setState(s => ({
+          ...s,
+          syncing: false,
+          balances,
+          confirmedBalances: balances,
+          pendingBalances: {},
+        }))
+        return
+      }
+      if (!session) throw new Error('WalletProvider: local wallet session is missing')
       await syncBalances(session.wollet, session.esploraClient)
       if (attempt !== connectionChangeCounterRef.current) return
 
@@ -401,6 +565,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setState(s => ({ ...s, syncing: false, balances, confirmedBalances, pendingBalances }))
     } catch (err) {
       if (attempt !== connectionChangeCounterRef.current) return
+      if (liquidProviderErrorCode(err) === 4900) {
+        forgetApogeeProvider()
+        const error = err instanceof Error ? err.message : String(err)
+        await endSession({ error, disconnectProvider: false })
+        return
+      }
       ErrorHandler.process(err)
       const error = err instanceof Error ? err.message : String(err)
       setState(s => ({ ...s, syncing: false, error, isError: true }))
@@ -410,7 +580,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         lastSyncAtRef.current = Date.now()
       }
     }
-  }, [])
+  }, [endSession])
 
   // Best-effort local UI update — the tx already broadcast successfully regardless of
   // this outcome, so failures here (e.g. a full scan racing this call) must not throw.
@@ -522,6 +692,32 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return session.wollet
   }, [])
 
+  const executeTxManifest = useCallback(async (invocation: TxManifestInvocation) => {
+    const session = apogeeSessionRef.current
+    if (!session) throw new Error('Connect Apogee before executing this lending action.')
+    if (
+      invocation.chainId !== session.connection.chainId ||
+      invocation.accountIdentifier !== session.connection.accountIdentifier
+    ) {
+      throw new Error('The lending request does not match the connected Apogee account.')
+    }
+    try {
+      return await executeApogeeTxManifest(session.provider, invocation)
+    } catch (error) {
+      if ((error as { code?: unknown })?.code === 4900) forgetApogeeProvider()
+      throw error
+    }
+  }, [])
+
+  const addPortfolioScript = useCallback(async (scriptPubkey: string) => {
+    const normalized = scriptPubkey.toLowerCase()
+    setState(s =>
+      s.portfolioScripts.includes(normalized)
+        ? s
+        : { ...s, portfolioScripts: [...s.portfolioScripts, normalized].sort() },
+    )
+  }, [])
+
   return (
     <WalletContext.Provider
       value={{
@@ -537,6 +733,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         verifyReceiveAddress,
         getWollet,
         getBlindedWalletUtxos,
+        executeTxManifest,
+        addPortfolioScript,
       }}
     >
       {children}

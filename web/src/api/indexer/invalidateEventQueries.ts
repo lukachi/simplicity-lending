@@ -9,23 +9,24 @@ import { borrowerQueryKeys, factoryQueryKeys, lenderQueryKeys, offersQueryKeys }
 
 export interface InvalidateContext {
   queryClient: QueryClient
-  scriptPubkey: string | null
+  scriptPubkeys: readonly string[]
 }
 
-function isOwnScript(eventScript: string, walletScript: string | null): boolean {
-  return walletScript !== null && normalizeHex(eventScript) === normalizeHex(walletScript)
+function isOwnScript(eventScript: string, walletScripts: readonly string[]): boolean {
+  const normalizedEventScript = normalizeHex(eventScript)
+  return walletScripts.some(script => normalizeHex(script) === normalizedEventScript)
 }
 
 export function invalidateEventQueries(
   event: IndexerEvent,
-  { queryClient, scriptPubkey }: InvalidateContext,
+  { queryClient, scriptPubkeys }: InvalidateContext,
 ): void {
   const invalidate = (queryKey: readonly unknown[]) => queryClient.invalidateQueries({ queryKey })
 
   switch (event.type) {
     case 'offer_created':
       invalidate(offersQueryKeys.lists())
-      if (isOwnScript(event.borrower_script_pubkey, scriptPubkey)) {
+      if (isOwnScript(event.borrower_script_pubkey, scriptPubkeys)) {
         invalidate(borrowerQueryKeys.all())
       }
       break
@@ -37,7 +38,7 @@ export function invalidateEventQueries(
       invalidate(lenderQueryKeys.all())
       break
     case 'factory_created':
-      if (isOwnScript(event.factory_auth_script_pubkey, scriptPubkey)) {
+      if (isOwnScript(event.factory_auth_script_pubkey, scriptPubkeys)) {
         invalidate(factoryQueryKeys.byScript(event.factory_auth_script_pubkey))
       }
       break

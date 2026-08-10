@@ -109,7 +109,7 @@ export default function OffersTable<T extends OfferShort>({
   onStatusFilterChange,
   allowCreatedOfferHighlight = true,
 }: OffersTableProps<T>) {
-  const { scriptPubkey } = useWallet()
+  const { backend, isReady, portfolioScripts } = useWallet()
   const {
     pendingTxs,
     newlyCreatedOfferIds,
@@ -139,7 +139,8 @@ export default function OffersTable<T extends OfferShort>({
 
   const resolveOfferWarning = useCallback(
     (offer: OfferShort): { severity: keyof typeof SEVERITY_STYLES; message: string } | null => {
-      const role = resolveActorRole(offer, scriptPubkey)
+      if (backend === 'apogee') return null
+      const role = resolveActorRole(offer, portfolioScripts, isReady)
       const expired = currentBlockHeight > offer.loan_expiration_height
 
       if (role === 'lender') {
@@ -174,7 +175,7 @@ export default function OffersTable<T extends OfferShort>({
       }
       return null
     },
-    [scriptPubkey, currentBlockHeight],
+    [backend, portfolioScripts, currentBlockHeight, isReady],
   )
 
   const handleRowAction = (key: Key) => {
@@ -247,7 +248,8 @@ export default function OffersTable<T extends OfferShort>({
               items={offers}
               dependencies={[
                 currentBlockHeight,
-                scriptPubkey,
+                backend,
+                portfolioScripts,
                 resolveOfferWarning,
                 pendingTxs,
                 highlightedCreatedOfferIds,

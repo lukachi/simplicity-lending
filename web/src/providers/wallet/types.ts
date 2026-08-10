@@ -7,12 +7,15 @@ import type {
   WolletDescriptor,
 } from '@lilbonekit/lwk-web'
 
+import type { TxManifestExecutionResult, TxManifestInvocation } from '@/lib/liquid-provider/types'
 import type { WalletConnector } from '@/lib/wallet-core/connector/types'
 import type { WalletCache } from '@/lib/wallet-core/store/walletCache'
 import type { ConnectionStatus, WalletType } from '@/lib/wallet-core/types'
 
 export interface ConnectOptions {
   seedMnemonic?: string
+  /** Connect to the event-discovered Apogee browser wallet. */
+  apogee?: boolean
   /** Connect via the experimental SideSwap wallet connect flow instead of Jade/seed. */
   sideswap?: boolean
   /** Only reattach to a still-live SideSwap session; never start a fresh login request. */
@@ -35,6 +38,8 @@ export interface WalletContextValue extends WalletState {
   getWollet(): Promise<Wollet>
   getReceiveAddress(): Promise<string | null>
   verifyReceiveAddress(): Promise<string>
+  executeTxManifest(invocation: TxManifestInvocation): Promise<TxManifestExecutionResult>
+  addPortfolioScript(scriptPubkey: string): Promise<void>
 }
 
 export interface WalletSession {
@@ -45,7 +50,8 @@ export interface WalletSession {
   cache: WalletCache
 }
 
-export interface SavedSession {
+export interface SavedLocalSession {
+  backend?: 'local'
   connectorId: string | null
   walletType: WalletType
   descriptorStr: string
@@ -54,7 +60,14 @@ export interface SavedSession {
   sideswap?: boolean
 }
 
-export type WalletSignerType = 'jade' | 'seed' | 'sideswap'
+export interface SavedApogeeSession {
+  backend: 'apogee'
+}
+
+export type SavedSession = SavedLocalSession | SavedApogeeSession
+
+export type WalletBackend = 'local' | 'apogee'
+export type WalletSignerType = 'jade' | 'seed' | 'sideswap' | 'apogee'
 
 // appLink is null for sign requests — the deep-link format for those isn't confirmed yet.
 export interface PendingWalletRequest {
@@ -64,6 +77,7 @@ export interface PendingWalletRequest {
 }
 
 export interface WalletState {
+  backend: WalletBackend | null
   connectionStatus: ConnectionStatus
   connectorId: string | null
   walletType: WalletType | null
@@ -71,6 +85,15 @@ export interface WalletState {
   balances: Record<string, string>
   confirmedBalances: Record<string, string>
   pendingBalances: Record<string, string>
+  /** Stable provider account identity; absent for the in-page wallet backends. */
+  accountIdentifier: string | null
+  chainId: string | null
+  /** Persistence scope. This is an account id for Apogee and the stable script for local wallets. */
+  walletScope: string | null
+  /** Current lender-NFT owner scripts known to this wallet session. */
+  portfolioScripts: string[]
+  /** Provider balances do not currently distinguish confirmed and pending values. */
+  hasBalanceBreakdown: boolean
   // Resolved once on connect; null until ready.
   receiveAddress: string | null
   scriptPubkey: string | null
@@ -85,6 +108,7 @@ export interface WalletState {
 }
 
 export const INITIAL_WALLET_STATE: WalletState = {
+  backend: null,
   connectionStatus: 'disconnected',
   connectorId: null,
   walletType: null,
@@ -92,6 +116,11 @@ export const INITIAL_WALLET_STATE: WalletState = {
   balances: {},
   confirmedBalances: {},
   pendingBalances: {},
+  accountIdentifier: null,
+  chainId: null,
+  walletScope: null,
+  portfolioScripts: [],
+  hasBalanceBreakdown: false,
   receiveAddress: null,
   scriptPubkey: null,
   syncing: false,

@@ -233,15 +233,17 @@ function useCreateBorrowerAccountCleanupPolling({
  * within an effect just to clear stale data for the previous wallet.
  */
 function PendingTransactionsStore({
+  walletScope,
   scriptPubkey,
   children,
 }: {
+  walletScope: string | null
   scriptPubkey: string | null
   children: ReactNode
 }) {
   const queryClient = useQueryClient()
   const [pendingTxs, setPendingTxs] = useState<PendingTxRecord[]>([])
-  const [isLoading, setIsLoading] = useState(Boolean(scriptPubkey))
+  const [isLoading, setIsLoading] = useState(Boolean(walletScope))
   const [surfacedTxids, setSurfacedTxids] = useState<Set<string>>(new Set())
   const [newlyCreatedOfferIds, setNewlyCreatedOfferIds] = useState<Set<string>>(new Set())
   const [highlightedCreatedOfferIds, setHighlightedCreatedOfferIds] = useState<Set<string>>(
@@ -259,9 +261,9 @@ function PendingTransactionsStore({
   }, [])
 
   useEffect(() => {
-    if (!scriptPubkey) return
+    if (!walletScope) return
     let cancelled = false
-    loadPendingTxsForWallet(scriptPubkey)
+    loadPendingTxsForWallet(walletScope)
       .catch(error => {
         console.warn('[PendingTransactions] Failed to load pending transactions', error)
         return []
@@ -275,7 +277,7 @@ function PendingTransactionsStore({
     return () => {
       cancelled = true
     }
-  }, [scriptPubkey])
+  }, [walletScope])
 
   const invalidateIndexerQueries = useCallback(() => {
     invalidateAllIndexerQueries(queryClient)
@@ -283,9 +285,11 @@ function PendingTransactionsStore({
 
   const addPendingTx = useCallback(
     async (input: AddPendingTxInput) => {
+      if (!walletScope) throw new Error('Cannot track a transaction without a wallet scope.')
       const now = Date.now()
       const record: PendingTxRecord = {
         ...input,
+        walletScope,
         confirmationStatus: 'processing',
         confirmations: null,
         createdAt: now,
@@ -299,7 +303,7 @@ function PendingTransactionsStore({
         console.warn('[PendingTransactions] Failed to persist pending transaction', error)
       }
     },
-    [invalidateIndexerQueries],
+    [invalidateIndexerQueries, walletScope],
   )
 
   const updatePendingTx = useCallback(async (txid: string, patch: Partial<PendingTxRecord>) => {
@@ -493,10 +497,14 @@ function PendingTransactionsStore({
 }
 
 export function PendingTransactionsProvider({ children }: PropsWithChildren) {
-  const { scriptPubkey } = useWallet()
+  const { scriptPubkey, walletScope } = useWallet()
 
   return (
-    <PendingTransactionsStore key={scriptPubkey ?? 'disconnected'} scriptPubkey={scriptPubkey}>
+    <PendingTransactionsStore
+      key={walletScope ?? 'disconnected'}
+      walletScope={walletScope}
+      scriptPubkey={scriptPubkey}
+    >
       {children}
     </PendingTransactionsStore>
   )

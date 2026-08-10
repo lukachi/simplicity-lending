@@ -16,8 +16,16 @@ const NETWORK_LABEL: Record<'liquidtestnet' | 'regtest', string> = {
 }
 
 export function WalletButton({ isDisabled }: { isDisabled?: boolean } = {}) {
-  const { connectionStatus, syncing, receiveAddress, disconnect, reconnecting, pendingRequest } =
-    useWallet()
+  const {
+    backend,
+    connectionStatus,
+    syncing,
+    receiveAddress,
+    accountIdentifier,
+    disconnect,
+    reconnecting,
+    pendingRequest,
+  } = useWallet()
   const { network, isMainnet } = useLwk()
   const [disconnecting, setDisconnecting] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -50,11 +58,13 @@ export function WalletButton({ isDisabled }: { isDisabled?: boolean } = {}) {
     )
   }
 
-  if (connectionStatus === 'ready' && receiveAddress) {
+  const walletDisplay = receiveAddress ?? accountIdentifier
+
+  if (connectionStatus === 'ready' && walletDisplay) {
     return (
       <Dropdown.Root isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
         <Dropdown.Trigger className={buttonVariants({ variant: 'secondary' })}>
-          {truncateAddress(receiveAddress)}
+          {backend === 'apogee' ? 'Apogee' : truncateAddress(walletDisplay)}
         </Dropdown.Trigger>
         <Dropdown.Popover placement='bottom end' className='p-4'>
           <div className='flex flex-col gap-3'>
@@ -63,9 +73,17 @@ export function WalletButton({ isDisabled }: { isDisabled?: boolean } = {}) {
                 {NETWORK_LABEL[network as 'liquidtestnet' | 'regtest']}
               </Chip>
             )}
+            {backend === 'apogee' && (
+              <Chip color='warning' variant='soft' size='sm' className='self-start'>
+                Accept Offer only
+              </Chip>
+            )}
             <div className='bg-surface-secondary flex items-center justify-between gap-2 rounded-lg p-1 px-2'>
-              <span className='font-mono text-xs'>{truncateAddress(receiveAddress)}</span>
-              <CopyButton value={receiveAddress} aria-label='Copy address' />
+              <span className='font-mono text-xs'>{truncateAddress(walletDisplay)}</span>
+              <CopyButton
+                value={walletDisplay}
+                aria-label={backend === 'apogee' ? 'Copy account identifier' : 'Copy address'}
+              />
             </div>
             <div className='flex flex-col gap-1.5'>
               <span className='text-muted text-[11px] font-semibold tracking-wide'>

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 
 import CopyButton from '@/components/CopyButton'
+import ApogeeIcon from '@/components/icons/ApogeeIcon'
 import ChevronLeftIcon from '@/components/icons/ChevronLeftIcon'
 import JadeIcon from '@/components/icons/JadeIcon'
 import SeedIcon from '@/components/icons/SeedIcon'
@@ -70,6 +71,7 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
   const [connecting, setConnecting] = useState(false)
   const [jadeConnecting, setJadeConnecting] = useState(false)
   const [sideswapConnecting, setSideswapConnecting] = useState(false)
+  const [apogeeConnecting, setApogeeConnecting] = useState(false)
   const [wasOpen, setWasOpen] = useState(isOpen)
 
   // Reset to the picker on open, unless a SideSwap login is still pending.
@@ -117,6 +119,16 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
       await connect(DEFAULT_WALLET_TYPE, { sideswap: true })
     } finally {
       setSideswapConnecting(false)
+    }
+  }
+
+  const handleApogeeConnect = async () => {
+    if (apogeeConnecting) return
+    setApogeeConnecting(true)
+    try {
+      await connect(DEFAULT_WALLET_TYPE, { apogee: true })
+    } finally {
+      setApogeeConnecting(false)
     }
   }
 
@@ -168,6 +180,21 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
     >
       {mode === 'choose' ? (
         <div className='flex flex-col gap-3'>
+          {env.VITE_NETWORK === 'liquidtestnet' && (
+            <ConnectOptionCard
+              icon={<ApogeeIcon className='size-6 text-white' />}
+              iconBadgeClassName='bg-accent'
+              title='Apogee'
+              subtitle='Accept lending offers through the Apogee browser wallet'
+              badge={
+                <Chip color='warning' variant='soft' size='sm'>
+                  Experimental
+                </Chip>
+              }
+              disabled={apogeeConnecting}
+              onPress={() => void handleApogeeConnect()}
+            />
+          )}
           <ConnectOptionCard
             icon={<JadeIcon className='size-6' />}
             iconBadgeClassName='bg-accent'
@@ -203,6 +230,7 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
               onPress={() => void handleSideswapConnect()}
             />
           )}
+          {visibleError && <p className='text-danger text-sm'>{visibleError}</p>}
         </div>
       ) : mode === 'seed' ? (
         <div className='flex flex-col gap-4'>
