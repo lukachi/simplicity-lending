@@ -4,14 +4,21 @@ import { env, type NetworkName } from '@/constants/env'
 
 export type Lwk = typeof import('@lilbonekit/lwk-web')
 
-let lwk: Lwk | null = null
+let lwkPromise: Promise<Lwk> | null = null
 
-export async function getLwk(): Promise<Lwk> {
-  if (!lwk) {
-    lwk = await import('@lilbonekit/lwk-web')
-    if (typeof lwk.default === 'function') await lwk.default()
+export function getLwk(): Promise<Lwk> {
+  if (!lwkPromise) {
+    lwkPromise = import('@lilbonekit/lwk-web')
+      .then(async lwk => {
+        if (typeof lwk.default === 'function') await lwk.default()
+        return lwk
+      })
+      .catch(error => {
+        lwkPromise = null
+        throw error
+      })
   }
-  return lwk
+  return lwkPromise
 }
 
 export function createLwkNetwork(network: NetworkName): Network {
