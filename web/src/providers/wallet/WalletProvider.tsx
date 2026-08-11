@@ -305,8 +305,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       let openedCache: WalletCache | null = null
       try {
         if (useApogee) {
-          if (network !== 'liquidtestnet') {
-            throw new Error('Apogee TX Manifest lending is currently available only on testnet.')
+          if (network !== 'liquidtestnet' && network !== 'regtest') {
+            throw new Error(
+              'Apogee TX Manifest lending is available only on testnet and local regtest.',
+            )
           }
           const connected = options?.resumeOnly ? await resumeApogee() : await connectApogee()
           if (!connected) {

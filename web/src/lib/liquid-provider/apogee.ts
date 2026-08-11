@@ -1,3 +1,4 @@
+import { env } from '@/constants/env'
 import { NETWORK_CONFIG } from '@/constants/network-config'
 
 import { discoverApogeeProvider } from './discovery'
@@ -10,6 +11,7 @@ import {
 } from './types'
 
 export const LIQUID_TESTNET_CHAIN_ID = 'bip122:a771da8e52ee6ad581ed1e9a99825e5b'
+export const LIQUID_REGTEST_CHAIN_ID = 'bip122:00902a6b70c2ca83b5d9c815d96a0e2f'
 export const SIMPLICITY_LENDING_V3_BUNDLE_HASH =
   'sha256:debdae89777fdd21fec2d763efe028876f267ff214aca9ddf9b3735d7657be15' as const
 export const CREATE_FACTORY_ACTION = 'issuance_factory.CreateFactory'
@@ -33,6 +35,12 @@ const REQUIRED_ACTIONS = [
 ] as const
 
 const CONNECT_METHODS = ['experimental_executeTxManifest', 'getBalance'] as const
+
+function apogeeChainId(): string {
+  if (env.VITE_NETWORK === 'liquidtestnet') return LIQUID_TESTNET_CHAIN_ID
+  if (env.VITE_NETWORK === 'regtest') return LIQUID_REGTEST_CHAIN_ID
+  throw new Error('Apogee TX Manifest lending is available only on testnet and local regtest.')
+}
 
 function hasRequestedPermissions(connection: LiquidConnection): boolean {
   return CONNECT_METHODS.every(method => connection.permissions.methods.includes(method))
@@ -77,10 +85,11 @@ export async function connectApogee(): Promise<{
 }> {
   const { provider } = await discoverApogeeProvider()
   await requireManifestSupport(provider)
+  const chainId = apogeeChainId()
   const result = await provider.request({
     method: 'wallet_connect',
     params: {
-      chains: [LIQUID_TESTNET_CHAIN_ID],
+      chains: [chainId],
       methods: [...CONNECT_METHODS],
       // wallet_connectionChanged is part of the provider's always-available
       // event surface. Apogee rejects attempts to request it as a permission.
@@ -89,7 +98,7 @@ export async function connectApogee(): Promise<{
   })
   if (
     !isLiquidConnection(result) ||
-    result.chainId !== LIQUID_TESTNET_CHAIN_ID ||
+    result.chainId !== chainId ||
     !hasRequestedPermissions(result)
   ) {
     throw new Error('Apogee connected an unexpected Liquid account or network.')
@@ -103,9 +112,10 @@ export async function resumeApogee(): Promise<{
 } | null> {
   const { provider } = await discoverApogeeProvider()
   await requireManifestSupport(provider)
+  const chainId = apogeeChainId()
   const result = await provider.request({ method: 'wallet_getConnection' })
   if (result === null) return null
-  if (!isLiquidConnection(result) || result.chainId !== LIQUID_TESTNET_CHAIN_ID) return null
+  if (!isLiquidConnection(result) || result.chainId !== chainId) return null
   if (!hasRequestedPermissions(result)) return null
   return { provider, connection: result }
 }

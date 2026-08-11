@@ -14,6 +14,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 - `VITE_API_URL` - Base URL for the indexer API.
 - `VITE_ESPLORA_BASE_URL` - Base URL for Esplora.
 - `VITE_NETWORK` - Network name (`liquid`, `liquidtestnet`, `regtest`).
+- `VITE_REGTEST_PRINCIPAL_ASSET_ID` - Principal/protocol-fee asset ID created by
+  the local regtest harness. Required when `VITE_NETWORK=regtest`.
 
 ## Stack
 

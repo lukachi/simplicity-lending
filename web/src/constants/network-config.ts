@@ -74,13 +74,17 @@ const NETWORK_CONFIG_BY_NETWORK: Record<NetworkName, NetworkConfig> = {
       icon: LbtcIcon,
     },
     principalAsset: {
-      id: '25b17682b0e4f7b0711de7e8ee2e33cd01d65680eed82cce1af84cfbdde30064',
+      id:
+        env.VITE_REGTEST_PRINCIPAL_ASSET_ID ??
+        '25b17682b0e4f7b0711de7e8ee2e33cd01d65680eed82cce1af84cfbdde30064',
       decimals: 2,
       symbol: 'USDT',
       icon: UsdtIcon,
     },
     protocolFeeAsset: {
-      id: '25b17682b0e4f7b0711de7e8ee2e33cd01d65680eed82cce1af84cfbdde30064',
+      id:
+        env.VITE_REGTEST_PRINCIPAL_ASSET_ID ??
+        '25b17682b0e4f7b0711de7e8ee2e33cd01d65680eed82cce1af84cfbdde30064',
       decimals: 2,
       symbol: 'USDT',
       icon: UsdtIcon,

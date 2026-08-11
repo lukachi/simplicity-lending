@@ -180,7 +180,7 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
     >
       {mode === 'choose' ? (
         <div className='flex flex-col gap-3'>
-          {env.VITE_NETWORK === 'liquidtestnet' && (
+          {(env.VITE_NETWORK === 'liquidtestnet' || env.VITE_NETWORK === 'regtest') && (
             <ConnectOptionCard
               icon={<ApogeeIcon className='size-6 text-white' />}
               iconBadgeClassName='bg-accent'

@@ -14,6 +14,11 @@ const envSchema = zod.object({
   PROD: zod.boolean().default(false),
   VITE_ESPLORA_BASE_URL: zod.string().url().default('https://blockstream.info/liquid'),
   VITE_NETWORK: zod.enum(['liquid', 'liquidtestnet', 'regtest']).default('liquid'),
+  /** Regtest browser harness asset issued by its disposable Elements wallet. */
+  VITE_REGTEST_PRINCIPAL_ASSET_ID: zod
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   VITE_WATERFALLS_URL: zod.string().url(),
   VITE_WATERFALLS_RECIPIENT: zod
     .string()
@@ -33,6 +38,7 @@ export const env = envSchema.parse({
   VITE_API_URL: import.meta.env.VITE_API_URL,
   VITE_ESPLORA_BASE_URL: import.meta.env.VITE_ESPLORA_BASE_URL,
   VITE_NETWORK: import.meta.env.VITE_NETWORK,
+  VITE_REGTEST_PRINCIPAL_ASSET_ID: import.meta.env.VITE_REGTEST_PRINCIPAL_ASSET_ID,
   DEV: import.meta.env.DEV,
   PROD: import.meta.env.PROD,
   VITE_WATERFALLS_URL: import.meta.env.VITE_WATERFALLS_URL,

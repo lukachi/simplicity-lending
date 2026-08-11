@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_API_URL?: string
   readonly VITE_ESPLORA_BASE_URL?: string
   readonly VITE_NETWORK?: 'liquid' | 'liquidtestnet' | 'regtest'
+  readonly VITE_REGTEST_PRINCIPAL_ASSET_ID?: string
 }
 
 interface ImportMeta {
