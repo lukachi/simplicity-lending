@@ -1,4 +1,4 @@
-import { useBorrowerOverview } from '@/api/indexer/hooks'
+import { useBorrowerOverviewByScripts } from '@/api/indexer/hooks'
 import { NETWORK_CONFIG } from '@/constants/network-config'
 import { useWallet } from '@/providers/wallet/useWallet'
 import { findAssetAmount } from '@/utils/offers'
@@ -18,8 +18,13 @@ export interface UseBorrowerStatsResult {
 }
 
 export function useBorrowerStats(): UseBorrowerStatsResult {
-  const { scriptPubkey } = useWallet()
-  const { data: overview, isLoading, error, refetch } = useBorrowerOverview(scriptPubkey ?? '')
+  const { portfolioScripts } = useWallet()
+  const {
+    data: overview,
+    isLoading,
+    error,
+    refetch,
+  } = useBorrowerOverviewByScripts(portfolioScripts)
 
   return {
     stats: {

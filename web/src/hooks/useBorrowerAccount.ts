@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
 import { fetchFeeRateSatPerKvbAbovePending } from '@/api/esplora/fee'
-import { useFactories } from '@/api/indexer/hooks'
+import { useFactoriesByScripts } from '@/api/indexer/hooks'
 import { factoryQueryKeys } from '@/api/indexer/queryKeys'
 import type { FactoryDetails } from '@/api/indexer/schemas'
 import { AssetKind, buildAssetContract, contractHashOrEmpty } from '@/lwk/assetContract'
@@ -70,10 +70,11 @@ export interface BorrowerAccountCreationSummary {
 
 export function useBorrowerAccount() {
   const { lwkNetwork } = useLwk()
-  const { getReceiveAddress, getBlindedWalletUtxos, getWollet, scriptPubkey } = useWallet()
+  const { getReceiveAddress, getBlindedWalletUtxos, getWollet, portfolioScripts, scriptPubkey } =
+    useWallet()
   const { pendingTxs } = usePendingTransactions()
   const queryClient = useQueryClient()
-  const factoriesQuery = useFactories(scriptPubkey || '')
+  const factoriesQuery = useFactoriesByScripts(portfolioScripts)
   const activeFactory = factoriesQuery.data?.[0] ?? null
   const hasAccount = !!activeFactory
 
@@ -83,9 +84,8 @@ export function useBorrowerAccount() {
   )
 
   const refetchFactory = useCallback((): void => {
-    if (!scriptPubkey) return
-    queryClient.invalidateQueries({ queryKey: factoryQueryKeys.byScript(scriptPubkey) })
-  }, [scriptPubkey, queryClient])
+    queryClient.invalidateQueries({ queryKey: factoryQueryKeys.all() })
+  }, [queryClient])
 
   const createBorrowerAccount = async (): Promise<UpdatedPset<BorrowerAccountCreationSummary>> => {
     const receiveAddressString = await getReceiveAddress()

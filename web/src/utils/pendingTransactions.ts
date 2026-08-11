@@ -29,7 +29,7 @@ export function getBorrowerAccountPendingTx(
     pendingTxs.find(
       tx =>
         tx.kind === 'create_borrower_account' &&
-        tx.walletScriptPubkey === walletScriptPubkey &&
+        (!walletScriptPubkey || tx.walletScriptPubkey === walletScriptPubkey) &&
         tx.confirmationStatus !== 'failed',
     ) ?? null
   )

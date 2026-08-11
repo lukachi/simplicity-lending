@@ -5,6 +5,7 @@ import { useCallback, useMemo } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { z as zod } from 'zod'
 
+import { useBlockHeight } from '@/api/esplora/hooks'
 import { useAssetPriceUsd } from '@/api/prices/hooks'
 import BalanceCard from '@/components/BalanceCard'
 import PlusIcon from '@/components/icons/PlusIcon'
@@ -18,6 +19,7 @@ import { UiTextField } from '@/components/ui/UiTextField'
 import { env } from '@/constants/env'
 import { type ConfigAsset, NETWORK_CONFIG } from '@/constants/network-config'
 import { BPS_DIVISOR } from '@/constants/offers'
+import { useApogeeBorrowerActions } from '@/hooks/useApogeeBorrowerActions'
 import { useBorrowerAccount } from '@/hooks/useBorrowerAccount'
 import { useCreateOffer } from '@/hooks/useCreateOffer'
 import { useFeeRateSatPerKvb } from '@/hooks/useFeeRate'
@@ -276,16 +278,32 @@ export default function CreateBorrowOfferModal({
   onClose,
 }: CreateBorrowOfferModalProps) {
   const { collateralAsset, principalAsset } = NETWORK_CONFIG
-  const { confirmedBalances, pendingBalances, scriptPubkey } = useWallet()
+  const { backend, confirmedBalances, pendingBalances, scriptPubkey } = useWallet()
   const { denomination } = useAssetDenomination()
   const collateralUnit = getPolicyAssetUnit(denomination, collateralAsset)
   const collateralUsd = useAssetPriceUsd(collateralAsset.id)
-  const { utxos, isLoading: isLoadingUtxos } = usePolicyAssetUtxos(isOpen)
+  const { utxos: localUtxos, isLoading: isLoadingUtxos } = usePolicyAssetUtxos(
+    isOpen && backend !== 'apogee',
+  )
   const { factoryState, refetchFactory } = useBorrowerAccount()
   const { createOffer } = useCreateOffer()
+  const { createOffer: createOfferWithApogee } = useApogeeBorrowerActions()
+  const { data: currentBlockHeight } = useBlockHeight()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx, addSurfaceToast } = usePendingTransactions()
   const feeRate = useFeeRateSatPerKvb(isOpen)
+  const utxos = useMemo(
+    () =>
+      backend === 'apogee'
+        ? [
+            {
+              outpoint: '',
+              value: BigInt(confirmedBalances[collateralAsset.id] ?? 0),
+            },
+          ]
+        : localUtxos,
+    [backend, collateralAsset.id, confirmedBalances, localUtxos],
+  )
   const feeBudgetSats = useMemo(
     () => estimateFeeBudgetSats(CREATE_OFFER_WEIGHT_UNITS, feeRate, Math.max(utxos.length, 1)),
     [feeRate, utxos.length],
@@ -347,10 +365,25 @@ export default function CreateBorrowOfferModal({
   )
 
   const createBorrowOffer = useCallback(async () => {
+    if (!factoryState) {
+      throw new Error('Borrowing is not enabled. Enable borrowing first.')
+    }
+    if (backend === 'apogee') {
+      if (currentBlockHeight <= 0) throw new Error('Waiting for the current block height.')
+      const { txid } = await createOfferWithApogee({
+        factory: factoryState,
+        collateralAssetId: collateralAsset.id,
+        collateralAmount: collateralBase,
+        principalAssetId: principalAsset.id,
+        principalAmount: principalBase,
+        principalInterestRate: bps,
+        loanExpirationHeight: currentBlockHeight + loanDurationBlocks,
+        protocolFeeKeeperAssetId: principalAsset.id,
+      })
+      refetchFactory()
+      return txid
+    }
     const { txid } = await runStandardTransactionFlow(async () => {
-      if (!factoryState) {
-        throw new Error('No active factory found. Create a borrower account first.')
-      }
       const collateralUtxos = selectByLargestFirst(utxos, collateralBase + feeBudgetSats)
       if (!collateralUtxos) {
         throw new Error(
@@ -376,6 +409,11 @@ export default function CreateBorrowOfferModal({
     return txid
   }, [
     factoryState,
+    backend,
+    currentBlockHeight,
+    createOfferWithApogee,
+    collateralAsset.id,
+    principalAsset.id,
     utxos,
     collateralBase,
     feeBudgetSats,
@@ -393,7 +431,7 @@ export default function CreateBorrowOfferModal({
       void addPendingTx({
         txid,
         kind: 'create_offer',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
       })
     },
   })

@@ -9,8 +9,11 @@ import { STALE_TIME_MS } from '../staleTime'
 import {
   fetchAllOfferPages,
   fetchBorrowerOffers,
+  fetchBorrowerOffersByScripts,
   fetchBorrowerOverview,
+  fetchBorrowerOverviewByScripts,
   fetchFactoriesByScript,
+  fetchFactoriesByScripts,
   fetchFactory,
   fetchLenderOffers,
   fetchLenderOverview,
@@ -79,6 +82,18 @@ export function useBorrowerOverview(
   })
 }
 
+export function useBorrowerOverviewByScripts(
+  scriptPubkeys: readonly string[],
+  options: ExtraQueryOptions<BorrowerOverview> = {},
+): UseQueryResult<BorrowerOverview> {
+  return useQuery({
+    queryKey: borrowerQueryKeys.overviewByScripts(scriptPubkeys),
+    queryFn: ({ signal }) => fetchBorrowerOverviewByScripts(scriptPubkeys, { signal }),
+    staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
+    enabled: scriptPubkeys.length > 0,
+  })
+}
+
 export function useBorrowerOffers(
   scriptPubkeyHex: string,
   params: ListOffersParams = {},
@@ -90,6 +105,20 @@ export function useBorrowerOffers(
     staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
     placeholderData: options.placeholderData,
     enabled: !!scriptPubkeyHex,
+  })
+}
+
+export function useBorrowerOffersByScripts(
+  scriptPubkeys: readonly string[],
+  params: ListOffersParams = {},
+  options: ExtraQueryOptions<OfferListResponse> = {},
+): UseQueryResult<OfferListResponse> {
+  return useQuery({
+    queryKey: borrowerQueryKeys.offersByScripts(scriptPubkeys, params),
+    queryFn: ({ signal }) => fetchBorrowerOffersByScripts(scriptPubkeys, params, { signal }),
+    staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
+    placeholderData: options.placeholderData,
+    enabled: scriptPubkeys.length > 0,
   })
 }
 
@@ -164,6 +193,18 @@ export function useFactories(
     queryFn: ({ signal }) => fetchFactoriesByScript(scriptPubkeyHex, { signal }),
     staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
     enabled: !!scriptPubkeyHex,
+  })
+}
+
+export function useFactoriesByScripts(
+  scriptPubkeys: readonly string[],
+  options: ExtraQueryOptions<FactoryDetails[]> = {},
+): UseQueryResult<FactoryDetails[]> {
+  return useQuery({
+    queryKey: factoryQueryKeys.byScripts(scriptPubkeys),
+    queryFn: ({ signal }) => fetchFactoriesByScripts(scriptPubkeys, { signal }),
+    staleTime: options.staleTime ?? STALE_TIME_MS.realtime,
+    enabled: scriptPubkeys.length > 0,
   })
 }
 

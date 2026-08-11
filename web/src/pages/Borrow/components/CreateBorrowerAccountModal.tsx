@@ -4,10 +4,12 @@ import UserIcon from '@/components/icons/UserIcon'
 import TransactionModal from '@/components/TransactionModal'
 import { UiButton } from '@/components/ui/UiButton'
 import { UiModal } from '@/components/ui/UiModal'
+import { useApogeeBorrowerActions } from '@/hooks/useApogeeBorrowerActions'
 import { useBorrowerAccount } from '@/hooks/useBorrowerAccount'
 import { useFreezeViewWhileOpen } from '@/hooks/useFreezeViewWhileOpen'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
 import { usePendingTransactions } from '@/providers/pendingTransactions/usePendingTransactions'
+import { useWallet } from '@/providers/wallet/useWallet'
 
 interface CreateBorrowerAccountModalProps {
   isOpen: boolean
@@ -21,15 +23,18 @@ export default function CreateBorrowerAccountModal({
   onClose,
 }: CreateBorrowerAccountModalProps) {
   const { createBorrowerAccount, refetchFactory, scriptPubkey } = useBorrowerAccount()
+  const { enableBorrowing } = useApogeeBorrowerActions()
+  const { backend } = useWallet()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx, addSurfaceToast } = usePendingTransactions()
   const { mutate, reset, data, status } = useMutation({
-    mutationFn: () => runStandardTransactionFlow(createBorrowerAccount),
+    mutationFn: () =>
+      backend === 'apogee' ? enableBorrowing() : runStandardTransactionFlow(createBorrowerAccount),
     onSuccess: result => {
       void addPendingTx({
         txid: result.txid,
         kind: 'create_borrower_account',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
       })
     },
   })
@@ -52,7 +57,7 @@ export default function CreateBorrowerAccountModal({
     return (
       <TransactionModal
         isOpen={isOpen}
-        eyebrow='New Borrower Account'
+        eyebrow='Enable Borrowing'
         status={view.status}
         txid={view.txid}
         onClose={handleClose}
@@ -71,7 +76,7 @@ export default function CreateBorrowerAccountModal({
           <span className='bg-accent-soft text-accent-soft-foreground flex size-10 items-center justify-center rounded-full'>
             <UserIcon className='size-5' />
           </span>
-          Create Borrower Account
+          Enable Borrowing
         </span>
       }
       footer={
@@ -85,12 +90,14 @@ export default function CreateBorrowerAccountModal({
               mutate()
             }}
           >
-            Create
+            Enable
           </UiButton>
         </>
       }
     >
-      <p className='text-muted text-sm'>Required to create borrow offers.</p>
+      <p className='text-muted text-sm'>
+        Creates the reusable on-chain capability this wallet needs to publish borrow offers.
+      </p>
     </UiModal>
   )
 }

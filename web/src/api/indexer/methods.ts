@@ -33,14 +33,6 @@ function normalizeWalletScripts(scriptPubkeys: readonly string[]): string[] {
   return [...new Set(scriptPubkeys.map(normalizeHex).filter(Boolean))].sort()
 }
 
-function toLenderScriptQuery(scriptPubkeys: readonly string[]): Record<string, string> {
-  const scripts = normalizeWalletScripts(scriptPubkeys)
-  if (scripts.length === 0) throw new Error('At least one lender script pubkey is required')
-  return scripts.length === 1
-    ? { script_pubkey: scripts[0] }
-    : { script_pubkeys: scripts.join(',') }
-}
-
 export type SortDir = 'asc' | 'desc'
 
 export type SortField =
@@ -132,6 +124,29 @@ export async function fetchBorrowerOverview(
   return requestJson(url, borrowerOverviewSchema, { signal: options.signal })
 }
 
+export async function fetchBorrowerOverviewByScripts(
+  scriptPubkeys: readonly string[],
+  options: RequestParams = {},
+): Promise<BorrowerOverview> {
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  const overviews = await Promise.all(scripts.map(script => fetchBorrowerOverview(script, options)))
+  const sumAssets = (field: 'collateral_locked' | 'borrowings') => {
+    const totals = new Map<string, bigint>()
+    for (const overview of overviews) {
+      for (const entry of overview[field]) {
+        totals.set(entry.asset, (totals.get(entry.asset) ?? 0n) + entry.amount)
+      }
+    }
+    return [...totals].map(([asset, amount]) => ({ asset, amount }))
+  }
+  return {
+    collateral_locked: sumAssets('collateral_locked'),
+    borrowings: sumAssets('borrowings'),
+    active_loans: overviews.reduce((sum, overview) => sum + overview.active_loans, 0),
+    pending_offers: overviews.reduce((sum, overview) => sum + overview.pending_offers, 0),
+  }
+}
+
 export async function fetchBorrowerOffers(
   scriptPubkeyHex: string,
   params: ListOffersParams = {},
@@ -144,12 +159,52 @@ export async function fetchBorrowerOffers(
   return requestJson(url, offerListResponseSchema, { signal: options.signal })
 }
 
+export async function fetchBorrowerOffersByScripts(
+  scriptPubkeys: readonly string[],
+  params: ListOffersParams = {},
+  options: RequestParams = {},
+): Promise<OfferListResponse> {
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  const unpaged = { ...params, limit: undefined, offset: undefined }
+  const pages = await Promise.all(
+    scripts.map(script =>
+      fetchAllOfferPages(page => fetchBorrowerOffers(script, page, options), unpaged),
+    ),
+  )
+  const unique = [...new Map(pages.flat().map(offer => [offer.id, offer])).values()]
+  unique.sort((a, b) => compareOffers(a, b, params))
+  const offset = params.offset ?? 0
+  const limit = params.limit ?? OFFERS_PAGE_LIMIT
+  return { items: unique.slice(offset, offset + limit), total: unique.length, limit, offset }
+}
+
 export async function fetchLenderOverview(
   scriptPubkeys: readonly string[],
   options: RequestParams = {},
 ): Promise<LenderOverview> {
-  const url = buildSearchUrl('/lenders/overview', toLenderScriptQuery(scriptPubkeys))
-  return requestJson(url, lenderOverviewSchema, { signal: options.signal })
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  if (scripts.length === 0) throw new Error('At least one lender script pubkey is required')
+  const overviews = await Promise.all(
+    scripts.map(script => {
+      const url = buildSearchUrl('/lenders/overview', { script_pubkey: script })
+      return requestJson(url, lenderOverviewSchema, { signal: options.signal })
+    }),
+  )
+  const sumAssets = (field: 'supplied_loans' | 'interest_outstanding') => {
+    const totals = new Map<string, bigint>()
+    for (const overview of overviews) {
+      for (const entry of overview[field]) {
+        totals.set(entry.asset, (totals.get(entry.asset) ?? 0n) + entry.amount)
+      }
+    }
+    return [...totals].map(([asset, amount]) => ({ asset, amount }))
+  }
+  return {
+    supplied_loans: sumAssets('supplied_loans'),
+    interest_outstanding: sumAssets('interest_outstanding'),
+    active_loans: overviews.reduce((sum, overview) => sum + overview.active_loans, 0),
+    to_be_claimed: overviews.reduce((sum, overview) => sum + overview.to_be_claimed, 0),
+  }
 }
 
 export async function fetchLenderOffers(
@@ -157,8 +212,28 @@ export async function fetchLenderOffers(
   params: ListOffersParams = {},
   options: RequestParams = {},
 ): Promise<OfferListResponse> {
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  if (scripts.length === 0) throw new Error('At least one lender script pubkey is required')
+  const unpaged = { ...params, limit: undefined, offset: undefined }
+  const pages = await Promise.all(
+    scripts.map(script =>
+      fetchAllOfferPages(page => fetchLenderOffersForScript(script, page, options), unpaged),
+    ),
+  )
+  const unique = [...new Map(pages.flat().map(offer => [offer.id, offer])).values()]
+  unique.sort((a, b) => compareOffers(a, b, params))
+  const offset = params.offset ?? 0
+  const limit = params.limit ?? OFFERS_PAGE_LIMIT
+  return { items: unique.slice(offset, offset + limit), total: unique.length, limit, offset }
+}
+
+async function fetchLenderOffersForScript(
+  scriptPubkey: string,
+  params: ListOffersParams,
+  options: RequestParams,
+): Promise<OfferListResponse> {
   const url = buildSearchUrl('/lenders/offers', {
-    ...toLenderScriptQuery(scriptPubkeys),
+    script_pubkey: scriptPubkey,
     ...toQueryParams(params),
   })
   return requestJson(url, offerListResponseSchema, { signal: options.signal })
@@ -172,6 +247,24 @@ export async function fetchFactoriesByScript(
     script_pubkey: normalizeHex(scriptPubkeyHex),
   })
   return requestJson(url, factoryListSchema, { signal: options.signal })
+}
+
+export async function fetchFactoriesByScripts(
+  scriptPubkeys: readonly string[],
+  options: RequestParams = {},
+): Promise<FactoryDetails[]> {
+  const scripts = normalizeWalletScripts(scriptPubkeys)
+  const lists = await Promise.all(scripts.map(script => fetchFactoriesByScript(script, options)))
+  return [...new Map(lists.flat().map(factory => [factory.id, factory])).values()]
+}
+
+function compareOffers(a: OfferShort, b: OfferShort, params: ListOffersParams): number {
+  const field = params.sortBy ?? 'created_at_height'
+  const direction = params.sortDir === 'asc' ? 1 : -1
+  const left = a[field]
+  const right = b[field]
+  const order = left < right ? -1 : left > right ? 1 : a.id.localeCompare(b.id)
+  return order * direction
 }
 
 export async function fetchFactory(

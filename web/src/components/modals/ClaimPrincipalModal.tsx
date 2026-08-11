@@ -9,6 +9,7 @@ import { resolveNftOutpoints, toOutpoint } from '@/api/indexer/utils'
 import OfferActionShell from '@/components/modals/OfferActionShell'
 import OfferDetailsBody from '@/components/modals/OfferDetailsBody'
 import { NETWORK_CONFIG } from '@/constants/network-config'
+import { useApogeeBorrowerActions } from '@/hooks/useApogeeBorrowerActions'
 import { useClaimPrincipal } from '@/hooks/useClaimPrincipal'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
 import {
@@ -40,18 +41,21 @@ export default function ClaimPrincipalModal({
   onSuccess,
 }: ClaimPrincipalModalProps) {
   const { principalAsset } = NETWORK_CONFIG
-  const { syncWallet, getBlindedWalletUtxos, scriptPubkey } = useWallet()
+  const { backend, syncWallet, getBlindedWalletUtxos, scriptPubkey } = useWallet()
   const { lwkNetwork } = useLwk()
   const { claimPrincipal } = useClaimPrincipal()
+  const { claimPrincipal: claimPrincipalWithApogee } = useApogeeBorrowerActions()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx } = usePendingTransactions()
 
-  const claimBorrowerPrincipal = () =>
-    runStandardTransactionFlow(async () => {
+  const claimBorrowerPrincipal = async () => {
+    const fullOffer = await fetchOffer(offer.id)
+    if (backend === 'apogee') return claimPrincipalWithApogee(fullOffer)
+
+    return runStandardTransactionFlow(async () => {
       if (!offer.borrower_principal_utxo) throw new Error('Borrower principal UTXO not found')
       const principalOutpoint = toOutpoint(offer.borrower_principal_utxo)
 
-      const fullOffer = await fetchOffer(offer.id)
       const nftOutpoints = resolveNftOutpoints(fullOffer)
       if (!nftOutpoints) throw new Error('Offer NFT participants not found')
 
@@ -75,6 +79,7 @@ export default function ClaimPrincipalModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+  }
 
   const { mutate, reset, data, status } = useMutation({
     mutationFn: claimBorrowerPrincipal,
@@ -82,11 +87,12 @@ export default function ClaimPrincipalModal({
       void addPendingTx({
         txid: result.txid,
         kind: 'claim_principal',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
         offerId: offer.id,
         previousOfferStatus: offer.status,
         expectedOfferStatus: offer.status,
       })
+      if (backend === 'apogee') void syncWallet()
     },
   })
 

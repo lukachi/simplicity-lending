@@ -34,7 +34,7 @@ import {
 } from '@/lib/wallet-core/wallet/sync'
 import { createEsploraClient } from '@/lwk'
 import { useLwk } from '@/providers/lwk/useLwk'
-import { recoverLenderPortfolioScripts } from '@/simplicity/lending/apogee'
+import { recoverManifestPortfolioScripts } from '@/simplicity/lending/apogee'
 import { ErrorHandler } from '@/utils/errorHandler'
 
 import {
@@ -87,14 +87,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       if (recovering) return
       recovering = true
       try {
-        const scripts = await recoverLenderPortfolioScripts(scope)
+        const scripts = await recoverManifestPortfolioScripts(scope)
         if (cancelled || scripts.length === 0) return
         setState(current => ({
           ...current,
           portfolioScripts: [...new Set([...current.portfolioScripts, ...scripts])].sort(),
         }))
       } catch (error) {
-        console.warn('Failed to recover Apogee lender portfolio scripts.', error)
+        console.warn('Failed to recover Apogee lending portfolio scripts.', error)
       } finally {
         recovering = false
       }

@@ -11,8 +11,13 @@ import {
 
 import { fetchTxConfirmations } from '@/api/esplora/methods'
 import { invalidateAllIndexerQueries } from '@/api/indexer/invalidateIndexerQueries'
-import { fetchBorrowerOffers, fetchFactoriesByScript, fetchOffer } from '@/api/indexer/methods'
+import {
+  fetchBorrowerOffersByScripts,
+  fetchFactoriesByScripts,
+  fetchOffer,
+} from '@/api/indexer/methods'
 import { borrowerQueryKeys, factoryQueryKeys, offersQueryKeys } from '@/api/indexer/queryKeys'
+import type { OfferStatus } from '@/api/indexer/schemas'
 import { useLatestRef } from '@/hooks/useLatestRef'
 import { usePendingTxToasts } from '@/hooks/usePendingTxToasts'
 import { useWallet } from '@/providers/wallet/useWallet'
@@ -133,7 +138,7 @@ function useOfferCleanupPolling({
           record.kind === 'claim_principal'
             ? !result.data.borrower_principal_utxo && record.confirmationStatus !== 'processing'
             : record.expectedOfferStatus !== undefined &&
-              result.data.status === record.expectedOfferStatus
+              hasReachedOfferStatus(result.data.status, record.expectedOfferStatus)
 
         if (isCleaned) {
           onRemoveRef.current(record.txid)
@@ -152,13 +157,22 @@ function useOfferCleanupPolling({
   }, [offerGroups])
 }
 
+function hasReachedOfferStatus(current: OfferStatus, expected: OfferStatus): boolean {
+  if (current === expected) return true
+  if (expected === 'active') {
+    return current === 'repaid' || current === 'liquidated' || current === 'claimed'
+  }
+  if (expected === 'repaid') return current === 'claimed'
+  return false
+}
+
 function useCreateOfferCleanupPolling({
-  scriptPubkey,
+  scriptPubkeys,
   records,
   onCreated,
   onChecked,
 }: {
-  scriptPubkey: string | null
+  scriptPubkeys: readonly string[]
   records: PendingTxRecord[]
   onCreated: (txid: string, offerId: string) => void
   onChecked: (txid: string) => void
@@ -168,9 +182,9 @@ function useCreateOfferCleanupPolling({
   const onCheckedRef = useLatestRef(onChecked)
   const processedAtRef = useRef<number | null>(null)
   const { data, dataUpdatedAt, isSuccess } = useQuery({
-    queryKey: borrowerQueryKeys.offers(scriptPubkey ?? '', {}),
-    queryFn: ({ signal }) => fetchBorrowerOffers(scriptPubkey as string, {}, { signal }),
-    enabled: Boolean(scriptPubkey && records.length > 0),
+    queryKey: borrowerQueryKeys.offersByScripts(scriptPubkeys, {}),
+    queryFn: ({ signal }) => fetchBorrowerOffersByScripts(scriptPubkeys, {}, { signal }),
+    enabled: scriptPubkeys.length > 0 && records.length > 0,
     select: response => response.items,
   })
 
@@ -191,12 +205,12 @@ function useCreateOfferCleanupPolling({
 }
 
 function useCreateBorrowerAccountCleanupPolling({
-  scriptPubkey,
+  scriptPubkeys,
   records,
   onRemove,
   onChecked,
 }: {
-  scriptPubkey: string | null
+  scriptPubkeys: readonly string[]
   records: PendingTxRecord[]
   onRemove: (txid: string) => void
   onChecked: (txid: string) => void
@@ -206,9 +220,9 @@ function useCreateBorrowerAccountCleanupPolling({
   const onCheckedRef = useLatestRef(onChecked)
   const processedAtRef = useRef<number | null>(null)
   const { data, dataUpdatedAt, isSuccess } = useQuery({
-    queryKey: factoryQueryKeys.byScript(scriptPubkey ?? ''),
-    queryFn: ({ signal }) => fetchFactoriesByScript(scriptPubkey as string, { signal }),
-    enabled: Boolean(scriptPubkey && records.length > 0),
+    queryKey: factoryQueryKeys.byScripts(scriptPubkeys),
+    queryFn: ({ signal }) => fetchFactoriesByScripts(scriptPubkeys, { signal }),
+    enabled: scriptPubkeys.length > 0 && records.length > 0,
   })
 
   useEffect(() => {
@@ -234,11 +248,11 @@ function useCreateBorrowerAccountCleanupPolling({
  */
 function PendingTransactionsStore({
   walletScope,
-  scriptPubkey,
+  portfolioScripts,
   children,
 }: {
   walletScope: string | null
-  scriptPubkey: string | null
+  portfolioScripts: readonly string[]
   children: ReactNode
 }) {
   const queryClient = useQueryClient()
@@ -451,13 +465,13 @@ function PendingTransactionsStore({
     onChecked: markChecked,
   })
   useCreateOfferCleanupPolling({
-    scriptPubkey,
+    scriptPubkeys: portfolioScripts,
     records: createOfferRecords,
     onCreated: handleCreatedOffer,
     onChecked: markChecked,
   })
   useCreateBorrowerAccountCleanupPolling({
-    scriptPubkey,
+    scriptPubkeys: portfolioScripts,
     records: createBorrowerAccountRecords,
     onRemove: removeByTxid,
     onChecked: markChecked,
@@ -497,13 +511,13 @@ function PendingTransactionsStore({
 }
 
 export function PendingTransactionsProvider({ children }: PropsWithChildren) {
-  const { scriptPubkey, walletScope } = useWallet()
+  const { portfolioScripts, walletScope } = useWallet()
 
   return (
     <PendingTransactionsStore
       key={walletScope ?? 'disconnected'}
       walletScope={walletScope}
-      scriptPubkey={scriptPubkey}
+      portfolioScripts={portfolioScripts}
     >
       {children}
     </PendingTransactionsStore>

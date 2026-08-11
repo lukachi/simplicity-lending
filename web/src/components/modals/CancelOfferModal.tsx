@@ -8,6 +8,7 @@ import type { OfferShort } from '@/api/indexer/schemas'
 import { resolveNftOutpoints, resolvePendingOutpoint } from '@/api/indexer/utils'
 import OfferActionShell from '@/components/modals/OfferActionShell'
 import OfferDetailsBody from '@/components/modals/OfferDetailsBody'
+import { useApogeeBorrowerActions } from '@/hooks/useApogeeBorrowerActions'
 import { useCancelOffer } from '@/hooks/useCancelOffer'
 import { useFormatAmount } from '@/hooks/useFormatAmount'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
@@ -41,16 +42,20 @@ export default function CancelOfferModal({
   onClose,
   onSuccess,
 }: CancelOfferModalProps) {
-  const { syncWallet, getBlindedWalletUtxos, getReceiveAddress, scriptPubkey } = useWallet()
+  const { backend, syncWallet, getBlindedWalletUtxos, getReceiveAddress, scriptPubkey } =
+    useWallet()
   const { lwkNetwork } = useLwk()
   const { cancelOffer } = useCancelOffer()
+  const { cancelOffer: cancelOfferWithApogee } = useApogeeBorrowerActions()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx } = usePendingTransactions()
   const { formatCollateralDisplay } = useFormatAmount()
 
-  const cancelBorrowOffer = () =>
-    runStandardTransactionFlow(async () => {
-      const fullOffer = await fetchOffer(offer.id)
+  const cancelBorrowOffer = async () => {
+    const fullOffer = await fetchOffer(offer.id)
+    if (backend === 'apogee') return cancelOfferWithApogee(fullOffer)
+
+    return runStandardTransactionFlow(async () => {
       const pendingOfferOutpoint = resolvePendingOutpoint(fullOffer)
       if (!pendingOfferOutpoint) throw new Error('Pending offer UTXO not found')
 
@@ -82,6 +87,7 @@ export default function CancelOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+  }
 
   const { mutate, reset, data, status } = useMutation({
     mutationFn: cancelBorrowOffer,
@@ -89,11 +95,12 @@ export default function CancelOfferModal({
       void addPendingTx({
         txid: result.txid,
         kind: 'cancel_offer',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
         offerId: offer.id,
         previousOfferStatus: 'pending',
         expectedOfferStatus: 'cancelled',
       })
+      if (backend === 'apogee') void syncWallet()
     },
   })
 

@@ -3,7 +3,7 @@ import { keepPreviousData } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useBlockHeight } from '@/api/esplora/hooks'
-import { useBorrowerOffers } from '@/api/indexer/hooks'
+import { useBorrowerOffersByScripts } from '@/api/indexer/hooks'
 import CoinsIcon from '@/components/icons/CoinsIcon'
 import PlusIcon from '@/components/icons/PlusIcon'
 import { OffersLoadError } from '@/components/OffersLoadError'
@@ -31,7 +31,7 @@ export default function YourBorrows() {
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false)
   const now = useNow(STUCK_CHECK_INTERVAL_MS)
 
-  const { scriptPubkey } = useWallet()
+  const { portfolioScripts, scriptPubkey } = useWallet()
   const { hasAccount } = useBorrowerAccount()
   const { pendingTxs } = usePendingTransactions()
 
@@ -51,7 +51,9 @@ export default function YourBorrows() {
     isLoading,
     error,
     refetch,
-  } = useBorrowerOffers(scriptPubkey ?? '', params, { placeholderData: keepPreviousData })
+  } = useBorrowerOffersByScripts(portfolioScripts, params, {
+    placeholderData: keepPreviousData,
+  })
   const { data: currentBlockHeight } = useBlockHeight()
 
   const offers = borrowerData?.items ?? []

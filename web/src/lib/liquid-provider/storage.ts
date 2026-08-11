@@ -12,8 +12,18 @@ export interface ManifestAttemptRecord {
   key: string
   scope: string
   offerId: string
-  lenderNftAssetId: string
-  attemptKind?: 'accept-offer' | 'claim-lender-vault'
+  lenderNftAssetId?: string
+  trackedAssetId?: string
+  trackedOutputIndex?: number
+  attemptKind?:
+    | 'accept-offer'
+    | 'claim-lender-vault'
+    | 'create-factory'
+    | 'create-offer'
+    | 'claim-principal'
+    | 'cancel-offer'
+    | 'repay-loan'
+    | 'liquidate-offer'
   invocation: TxManifestInvocation
   createdAt: number
   txid?: string

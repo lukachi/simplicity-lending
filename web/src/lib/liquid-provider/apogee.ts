@@ -11,9 +11,26 @@ import {
 
 export const LIQUID_TESTNET_CHAIN_ID = 'bip122:a771da8e52ee6ad581ed1e9a99825e5b'
 export const SIMPLICITY_LENDING_V3_BUNDLE_HASH =
-  'sha256:0a57b34e20a46f0a3ec60d6be4904eebc9d3807bb6a2fbab0c66abdcdc05af8e' as const
+  'sha256:debdae89777fdd21fec2d763efe028876f267ff214aca9ddf9b3735d7657be15' as const
+export const CREATE_FACTORY_ACTION = 'issuance_factory.CreateFactory'
+export const CREATE_OFFER_ACTION = 'lending_contract.CreateOffer'
 export const ACCEPT_OFFER_ACTION = 'lending_contract.AcceptOffer'
+export const CLAIM_PRINCIPAL_ACTION = 'lending_contract.ClaimPrincipal'
+export const REPAY_LOAN_ACTION = 'lending_contract.RepayLoan'
+export const CANCEL_OFFER_ACTION = 'lending_contract.CancelOffer'
+export const LIQUIDATE_OFFER_ACTION = 'lending_contract.LiquidateOffer'
 export const CLAIM_LENDER_VAULT_ACTION = 'lending_contract.ClaimLenderVault'
+
+const REQUIRED_ACTIONS = [
+  CREATE_FACTORY_ACTION,
+  CREATE_OFFER_ACTION,
+  ACCEPT_OFFER_ACTION,
+  CLAIM_PRINCIPAL_ACTION,
+  REPAY_LOAN_ACTION,
+  CANCEL_OFFER_ACTION,
+  LIQUIDATE_OFFER_ACTION,
+  CLAIM_LENDER_VAULT_ACTION,
+] as const
 
 const CONNECT_METHODS = ['experimental_executeTxManifest', 'getBalance'] as const
 
@@ -46,8 +63,7 @@ async function requireManifestSupport(provider: LiquidProvider): Promise<void> {
   if (
     !isManifestSupport(support) ||
     !support.supported ||
-    !support.supportedActions?.includes(ACCEPT_OFFER_ACTION) ||
-    !support.supportedActions.includes(CLAIM_LENDER_VAULT_ACTION)
+    !REQUIRED_ACTIONS.every(action => support.supportedActions?.includes(action))
   ) {
     throw new Error(
       'This version of Apogee does not support the required Simplicity Lending actions.',

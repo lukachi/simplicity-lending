@@ -185,7 +185,7 @@ export function ConnectWalletModal({ isOpen, onOpenChange }: ConnectWalletModalP
               icon={<ApogeeIcon className='size-6 text-white' />}
               iconBadgeClassName='bg-accent'
               title='Apogee'
-              subtitle='Accept lending offers through the Apogee browser wallet'
+              subtitle='Borrow and lend through the Apogee browser wallet'
               badge={
                 <Chip color='warning' variant='soft' size='sm'>
                   Experimental

@@ -8,6 +8,7 @@ import type { OfferShort } from '@/api/indexer/schemas'
 import { resolveActiveOutpoint, resolveLenderNftOutpoint } from '@/api/indexer/utils'
 import OfferActionShell from '@/components/modals/OfferActionShell'
 import OfferDetailsBody from '@/components/modals/OfferDetailsBody'
+import { useApogeeLiquidateOffer } from '@/hooks/useApogeeLiquidateOffer'
 import { useFormatAmount } from '@/hooks/useFormatAmount'
 import { useLiquidateOffer } from '@/hooks/useLiquidateOffer'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
@@ -38,16 +39,19 @@ export default function LiquidateOfferModal({
   onClose,
   onSuccess,
 }: LiquidateOfferModalProps) {
-  const { syncWallet, getBlindedWalletUtxos, scriptPubkey } = useWallet()
+  const { backend, syncWallet, getBlindedWalletUtxos, scriptPubkey } = useWallet()
   const { lwkNetwork } = useLwk()
   const { liquidateOffer } = useLiquidateOffer()
+  const { liquidateOffer: liquidateOfferWithApogee } = useApogeeLiquidateOffer()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx } = usePendingTransactions()
   const { formatCollateralDisplay } = useFormatAmount()
 
-  const liquidateExpiredOffer = () =>
-    runStandardTransactionFlow(async () => {
-      const fullOffer = await fetchOffer(offer.id)
+  const liquidateExpiredOffer = async () => {
+    const fullOffer = await fetchOffer(offer.id)
+    if (backend === 'apogee') return liquidateOfferWithApogee(fullOffer)
+
+    return runStandardTransactionFlow(async () => {
       const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
       if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
 
@@ -74,6 +78,7 @@ export default function LiquidateOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+  }
 
   const { mutate, reset, data, status } = useMutation({
     mutationFn: liquidateExpiredOffer,
@@ -81,11 +86,12 @@ export default function LiquidateOfferModal({
       void addPendingTx({
         txid: result.txid,
         kind: 'liquidate_offer',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
         offerId: offer.id,
         previousOfferStatus: 'active',
         expectedOfferStatus: 'liquidated',
       })
+      if (backend === 'apogee') void syncWallet()
     },
   })
 

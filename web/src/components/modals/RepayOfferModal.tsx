@@ -10,6 +10,7 @@ import { resolveActiveOutpoint, resolveBorrowerNftOutpoint } from '@/api/indexer
 import OfferActionShell from '@/components/modals/OfferActionShell'
 import OfferDetailsBody from '@/components/modals/OfferDetailsBody'
 import { NETWORK_CONFIG } from '@/constants/network-config'
+import { useApogeeBorrowerActions } from '@/hooks/useApogeeBorrowerActions'
 import { useFormatAmount } from '@/hooks/useFormatAmount'
 import { useRepayOffer } from '@/hooks/useRepayOffer'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
@@ -43,16 +44,20 @@ export default function RepayOfferModal({
   onSuccess,
 }: RepayOfferModalProps) {
   const { principalAsset } = NETWORK_CONFIG
-  const { syncWallet, getBlindedWalletUtxos, scriptPubkey, confirmedBalances } = useWallet()
+  const { backend, syncWallet, getBlindedWalletUtxos, scriptPubkey, confirmedBalances } =
+    useWallet()
   const { lwkNetwork } = useLwk()
   const { repayOffer } = useRepayOffer()
+  const { repayLoan: repayOfferWithApogee } = useApogeeBorrowerActions()
   const runStandardTransactionFlow = useStandardTransactionFlow()
   const { addPendingTx } = usePendingTransactions()
   const { formatCollateralDisplay, formatPrincipalAmount } = useFormatAmount()
 
-  const repayBorrowOffer = () =>
-    runStandardTransactionFlow(async () => {
-      const fullOffer = await fetchOffer(offer.id)
+  const repayBorrowOffer = async () => {
+    const fullOffer = await fetchOffer(offer.id)
+    if (backend === 'apogee') return repayOfferWithApogee(fullOffer)
+
+    return runStandardTransactionFlow(async () => {
       const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
       if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
 
@@ -90,6 +95,7 @@ export default function RepayOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+  }
 
   const { mutate, reset, data, status } = useMutation({
     mutationFn: repayBorrowOffer,
@@ -97,11 +103,12 @@ export default function RepayOfferModal({
       void addPendingTx({
         txid: result.txid,
         kind: 'repay_offer',
-        walletScriptPubkey: scriptPubkey ?? '',
+        ...(scriptPubkey ? { walletScriptPubkey: scriptPubkey } : {}),
         offerId: offer.id,
         previousOfferStatus: 'active',
         expectedOfferStatus: 'repaid',
       })
+      if (backend === 'apogee') void syncWallet()
     },
   })
 
@@ -116,6 +123,7 @@ export default function RepayOfferModal({
       ? estimateFeeBudgetSats(REPAY_WEIGHT_UNITS, feeRate)
       : 0n
   const insufficientBalance =
+    backend !== 'apogee' &&
     BigInt(confirmedBalances[principalAsset.id] ?? 0) < totalToRepay + feeBuffer
 
   const txSummary = useMemo(() => {
