@@ -1,5 +1,5 @@
 import { Spinner } from '@heroui/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { env } from '@/constants/env'
 import { createLwkNetwork, getLwk } from '@/lwk'
@@ -10,7 +10,7 @@ const network = env.VITE_NETWORK
 const MIN_LOADER_DURATION_MS = 600
 
 export function LwkProvider({ children }: { children: React.ReactNode }) {
-  const [isLwkReady, setIsLwkReady] = useState(false)
+  const [lwkNetwork, setLwkNetwork] = useState<ReturnType<typeof createLwkNetwork> | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isLoaderComplete, setIsLoaderComplete] = useState(false)
   const [isContentVisible, setIsContentVisible] = useState(false)
@@ -21,35 +21,24 @@ export function LwkProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
+    let createdNetwork: ReturnType<typeof createLwkNetwork> | null = null
 
     getLwk()
       .then(() => {
-        if (!cancelled) {
-          setIsLwkReady(true)
-        }
+        if (cancelled) return
+        createdNetwork = createLwkNetwork(network)
+        setLwkNetwork(createdNetwork)
       })
       .catch(err => {
-        setError(new Error('Failed to load LWK', { cause: err }))
+        if (!cancelled) setError(new Error('Failed to load LWK', { cause: err }))
       })
 
     return () => {
       cancelled = true
+      createdNetwork?.free()
+      setLwkNetwork(current => (current === createdNetwork ? null : current))
     }
   }, [])
-
-  const lwkNetwork = useMemo(() => {
-    if (!isLwkReady) {
-      return null
-    }
-
-    return createLwkNetwork(network)
-  }, [isLwkReady])
-
-  useEffect(() => {
-    return () => {
-      lwkNetwork?.free()
-    }
-  }, [lwkNetwork])
 
   useEffect(() => {
     if (!lwkNetwork) return
