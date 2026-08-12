@@ -8,12 +8,13 @@ import {
   markManifestAttemptBroadcast,
   putManifestAttempt,
 } from '@/lib/liquid-provider/storage'
-import { liquidProviderErrorCode, type TxManifestInvocation } from '@/lib/liquid-provider/types'
+import {
+  shouldAbandonTxManifestAttempt,
+  type TxManifestInvocation,
+} from '@/lib/liquid-provider/types'
 import { useTxProgress } from '@/providers/txProgress/useTxProgress'
 import { useWallet } from '@/providers/wallet/useWallet'
 import { recoverManifestPortfolioScript } from '@/simplicity/lending/apogee'
-
-const DEFINITIVE_FAILURE_CODES = new Set([4001, 4200, 4901, -32602])
 
 type AttemptKind = NonNullable<ManifestAttemptRecord['attemptKind']>
 
@@ -84,8 +85,7 @@ export function useApogeeManifestAction() {
         return { txid: result.txid }
       } catch (error) {
         setTxProgressError(error)
-        const code = liquidProviderErrorCode(error)
-        if (code !== null && DEFINITIVE_FAILURE_CODES.has(code)) {
+        if (shouldAbandonTxManifestAttempt(error)) {
           await deleteManifestAttempt(walletScope, input.attemptId).catch(console.warn)
         }
         throw error

@@ -70,3 +70,30 @@ export function liquidProviderErrorCode(error: unknown): number | null {
   const code = (error as { code?: unknown }).code
   return typeof code === 'number' ? code : null
 }
+
+const DEFINITIVE_MANIFEST_FAILURE_CODES = new Set([4001, 4200, -32602])
+
+/**
+ * Whether a saved TX Manifest invocation is known to be unusable for a retry.
+ *
+ * A chain-unavailable response (4901) is deliberately not definitive: the
+ * transaction may have reached the network before the response was lost, so
+ * retrying must preserve the exact invocation and requestId. Apogee uses the
+ * structured checkpoint_invalid cause when the saved bytes truly cannot be
+ * retried and the dapp must start a new logical attempt.
+ */
+export function shouldAbandonTxManifestAttempt(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const providerError = error as { code?: unknown; data?: unknown }
+  if (
+    providerError.data &&
+    typeof providerError.data === 'object' &&
+    (providerError.data as { cause?: unknown }).cause === 'checkpoint_invalid'
+  ) {
+    return true
+  }
+  return (
+    typeof providerError.code === 'number' &&
+    DEFINITIVE_MANIFEST_FAILURE_CODES.has(providerError.code)
+  )
+}

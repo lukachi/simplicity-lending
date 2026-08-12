@@ -8,12 +8,10 @@ import {
   markManifestAttemptBroadcast,
   putManifestAttempt,
 } from '@/lib/liquid-provider/storage'
-import { liquidProviderErrorCode } from '@/lib/liquid-provider/types'
+import { shouldAbandonTxManifestAttempt } from '@/lib/liquid-provider/types'
 import { useTxProgress } from '@/providers/txProgress/useTxProgress'
 import { useWallet } from '@/providers/wallet/useWallet'
 import { buildClaimLenderVaultManifestInvocation } from '@/simplicity/lending/apogee'
-
-const DEFINITIVE_FAILURE_CODES = new Set([4001, 4200, 4901, -32602])
 
 export function useApogeeClaimLenderVault() {
   const { accountIdentifier, chainId, walletScope, executeTxManifest } = useWallet()
@@ -55,8 +53,7 @@ export function useApogeeClaimLenderVault() {
         return { txid: result.txid }
       } catch (error) {
         setTxProgressError(error)
-        const code = liquidProviderErrorCode(error)
-        if (code !== null && DEFINITIVE_FAILURE_CODES.has(code)) {
+        if (shouldAbandonTxManifestAttempt(error)) {
           await deleteManifestAttempt(walletScope, offer.id).catch(console.warn)
         }
         throw error
