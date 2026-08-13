@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { pendingTxToastQueue } from '@/providers/pendingTransactions/pendingTxToastQueue'
+import { getPendingTxFailureDescription } from '@/providers/pendingTransactions/resolution'
 import type { PendingTxKind, PendingTxRecord } from '@/providers/pendingTransactions/types'
 import { PENDING_TX_KIND_LABEL } from '@/utils/pendingTransactions'
 
@@ -33,7 +34,7 @@ export function usePendingTxToasts(pendingTxs: PendingTxRecord[], surfacedTxids:
         if (existing && existing.toastKey === null) continue // already showing the failure toast
         if (existing?.toastKey) pendingTxToastQueue.close(existing.toastKey)
         pendingTxToastQueue.add(
-          { title: label, description: "Couldn't confirm - check your wallet", variant: 'danger' },
+          { title: label, description: getPendingTxFailureDescription(record), variant: 'danger' },
           { timeout: 0 },
         )
         trackedRef.current.set(record.txid, { toastKey: null, label, kind: record.kind })

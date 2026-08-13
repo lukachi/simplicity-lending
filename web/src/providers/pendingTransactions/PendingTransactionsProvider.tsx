@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 
-import { fetchTxConfirmations } from '@/api/esplora/methods'
+import { fetchTxConfirmations, fetchTxOutspends } from '@/api/esplora/methods'
 import { invalidateAllIndexerQueries } from '@/api/indexer/invalidateIndexerQueries'
 import {
   fetchBorrowerOffersByScripts,
@@ -17,17 +17,21 @@ import {
   fetchOffer,
 } from '@/api/indexer/methods'
 import { borrowerQueryKeys, factoryQueryKeys, offersQueryKeys } from '@/api/indexer/queryKeys'
-import type { OfferStatus } from '@/api/indexer/schemas'
 import { useLatestRef } from '@/hooks/useLatestRef'
 import { usePendingTxToasts } from '@/hooks/usePendingTxToasts'
 import { useWallet } from '@/providers/wallet/useWallet'
 
 import { PendingTransactionsContext } from './PendingTransactionsContext'
+import {
+  findSupersedingTxid,
+  hasReachedOfferStatus,
+  isSupersededByOfferStatus,
+  parseConflictOutpoint,
+} from './resolution'
 import { deletePendingTx, loadPendingTxsForWallet, putPendingTx } from './storage'
 import type { AddPendingTxInput, PendingTxRecord } from './types'
 
 const CONFIRMATION_POLL_MS = 15_000
-const CONFIRMED_THRESHOLD = 1
 const FINALIZED_THRESHOLD = 2
 /** Defensive cap on how long a pending record can sit untracked before we give up on it. */
 const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1000
@@ -36,12 +40,17 @@ const SWEEP_INTERVAL_MS = 15_000
 const CREATED_OFFER_HIGHLIGHT_MS = 8_000
 
 type OfferRecordGroup = [offerId: string, records: PendingTxRecord[]]
-type TrackedTxStatus = 'processing' | 'confirmed' | 'finalized'
-
-interface TxStatusSnapshot {
-  status: TrackedTxStatus
-  confirmations: number | null
-}
+type TxStatusSnapshot =
+  | {
+      status: 'processing' | 'confirmed' | 'finalized'
+      confirmations: number | null
+    }
+  | {
+      status: 'failed'
+      confirmations: null
+      failureReason: 'superseded'
+      supersededByTxid: string
+    }
 
 function usePendingTxConfirmationTracking(
   records: PendingTxRecord[],
@@ -51,21 +60,30 @@ function usePendingTxConfirmationTracking(
   const onUpdateRef = useLatestRef(onUpdate)
   const snapshots = useQueries({
     queries: records.map(record => ({
-      queryKey: ['tx-status', record.txid],
+      queryKey: ['pending-tx-status', record.txid, record.conflictOutpoint],
       enabled: record.confirmationStatus !== 'finalized',
       refetchInterval: CONFIRMATION_POLL_MS,
       queryFn: async ({ signal }) => {
         const confirmations = await fetchTxConfirmations(record.txid, { signal })
         if (confirmations === null) {
+          const outpoint = parseConflictOutpoint(record.conflictOutpoint)
+          if (outpoint) {
+            const outspends = await fetchTxOutspends(outpoint.txid, { signal })
+            const supersededByTxid = findSupersedingTxid(record, outspends)
+            if (supersededByTxid) {
+              return {
+                status: 'failed',
+                confirmations: null,
+                failureReason: 'superseded',
+                supersededByTxid,
+              } satisfies TxStatusSnapshot
+            }
+          }
           return { status: 'processing', confirmations } satisfies TxStatusSnapshot
         }
 
-        const status: TrackedTxStatus =
-          confirmations >= FINALIZED_THRESHOLD
-            ? 'finalized'
-            : confirmations >= CONFIRMED_THRESHOLD
-              ? 'confirmed'
-              : 'processing'
+        const status: 'confirmed' | 'finalized' =
+          confirmations >= FINALIZED_THRESHOLD ? 'finalized' : 'confirmed'
 
         return { status, confirmations } satisfies TxStatusSnapshot
       },
@@ -90,6 +108,10 @@ function usePendingTxConfirmationTracking(
         confirmationStatus: snapshot.status,
         confirmations: snapshot.confirmations,
       }
+      if (snapshot.status === 'failed') {
+        patch.failureReason = snapshot.failureReason
+        patch.supersededByTxid = snapshot.supersededByTxid
+      }
       if (snapshot.status === 'finalized' && !record.finalizedAt) {
         patch.finalizedAt = Date.now()
       }
@@ -102,14 +124,17 @@ function useOfferCleanupPolling({
   offerGroups,
   onRemove,
   onChecked,
+  onSuperseded,
 }: {
   offerGroups: OfferRecordGroup[]
   onRemove: (txid: string) => void
   onChecked: (txid: string) => void
+  onSuperseded: (txid: string) => void
 }) {
   const offerGroupsRef = useLatestRef(offerGroups)
   const onRemoveRef = useLatestRef(onRemove)
   const onCheckedRef = useLatestRef(onChecked)
+  const onSupersededRef = useLatestRef(onSuperseded)
   const processedAtRef = useRef(new Map<string, number>())
   const results = useQueries({
     queries: offerGroups.map(([offerId]) => ({
@@ -134,6 +159,11 @@ function useOfferCleanupPolling({
       processedAtRef.current.set(offerId, result.dataUpdatedAt)
 
       for (const record of records) {
+        if (isSupersededByOfferStatus(record, result.data.status)) {
+          onSupersededRef.current(record.txid)
+          continue
+        }
+
         const isCleaned =
           record.kind === 'claim_principal'
             ? !result.data.borrower_principal_utxo && record.confirmationStatus !== 'processing'
@@ -147,7 +177,7 @@ function useOfferCleanupPolling({
         }
       }
     })
-  }, [offerGroupsRef, onCheckedRef, onRemoveRef, results])
+  }, [offerGroupsRef, onCheckedRef, onRemoveRef, onSupersededRef, results])
 
   useEffect(() => {
     const offerIds = new Set(offerGroups.map(([offerId]) => offerId))
@@ -155,15 +185,6 @@ function useOfferCleanupPolling({
       if (!offerIds.has(offerId)) processedAtRef.current.delete(offerId)
     }
   }, [offerGroups])
-}
-
-function hasReachedOfferStatus(current: OfferStatus, expected: OfferStatus): boolean {
-  if (current === expected) return true
-  if (expected === 'active') {
-    return current === 'repaid' || current === 'liquidated' || current === 'claimed'
-  }
-  if (expected === 'repaid') return current === 'claimed'
-  return false
 }
 
 function useCreateOfferCleanupPolling({
@@ -364,6 +385,17 @@ function PendingTransactionsStore({
     [removePendingTx],
   )
 
+  const markSuperseded = useCallback(
+    (txid: string) => {
+      void updatePendingTx(txid, {
+        confirmationStatus: 'failed',
+        confirmations: null,
+        failureReason: 'superseded',
+      })
+    },
+    [updatePendingTx],
+  )
+
   const handleCreatedOffer = useCallback(
     (txid: string, offerId: string) => {
       setNewlyCreatedOfferIds(prev => {
@@ -414,6 +446,7 @@ function PendingTransactionsStore({
         ) {
           void updatePendingTx(record.txid, {
             confirmationStatus: 'failed',
+            failureReason: 'timeout',
             errorMessage: 'Transaction tracking timed out.',
           })
         } else if (
@@ -463,6 +496,7 @@ function PendingTransactionsStore({
     offerGroups: offerRecordGroups,
     onRemove: removeByTxid,
     onChecked: markChecked,
+    onSuperseded: markSuperseded,
   })
   useCreateOfferCleanupPolling({
     scriptPubkeys: portfolioScripts,

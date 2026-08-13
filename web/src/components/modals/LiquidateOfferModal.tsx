@@ -49,12 +49,15 @@ export default function LiquidateOfferModal({
 
   const liquidateExpiredOffer = async () => {
     const fullOffer = await fetchOffer(offer.id)
-    if (backend === 'apogee') return liquidateOfferWithApogee(fullOffer)
+    const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
+    if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
 
-    return runStandardTransactionFlow(async () => {
-      const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
-      if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
+    if (backend === 'apogee') {
+      const result = await liquidateOfferWithApogee(fullOffer)
+      return { ...result, conflictOutpoint: activeOfferOutpoint }
+    }
 
+    const result = await runStandardTransactionFlow(async () => {
       const lenderNftOutpoint = resolveLenderNftOutpoint(fullOffer)
       if (!lenderNftOutpoint) throw new Error('Lender NFT UTXO not found')
 
@@ -78,6 +81,7 @@ export default function LiquidateOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+    return { ...result, conflictOutpoint: activeOfferOutpoint }
   }
 
   const { mutate, reset, data, status } = useMutation({
@@ -90,6 +94,7 @@ export default function LiquidateOfferModal({
         offerId: offer.id,
         previousOfferStatus: 'active',
         expectedOfferStatus: 'liquidated',
+        conflictOutpoint: result.conflictOutpoint,
       })
       if (backend === 'apogee') void syncWallet()
     },

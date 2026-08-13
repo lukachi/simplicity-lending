@@ -55,12 +55,15 @@ export default function RepayOfferModal({
 
   const repayBorrowOffer = async () => {
     const fullOffer = await fetchOffer(offer.id)
-    if (backend === 'apogee') return repayOfferWithApogee(fullOffer)
+    const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
+    if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
 
-    return runStandardTransactionFlow(async () => {
-      const activeOfferOutpoint = resolveActiveOutpoint(fullOffer)
-      if (!activeOfferOutpoint) throw new Error('Active offer UTXO not found')
+    if (backend === 'apogee') {
+      const result = await repayOfferWithApogee(fullOffer)
+      return { ...result, conflictOutpoint: activeOfferOutpoint }
+    }
 
+    const result = await runStandardTransactionFlow(async () => {
       const borrowerNftOutpoint = resolveBorrowerNftOutpoint(fullOffer)
       if (!borrowerNftOutpoint) throw new Error('Borrower NFT UTXO not found')
 
@@ -95,6 +98,7 @@ export default function RepayOfferModal({
         feeOutpoints: feeUtxos.map(utxoToOutpointString),
       })
     })
+    return { ...result, conflictOutpoint: activeOfferOutpoint }
   }
 
   const { mutate, reset, data, status } = useMutation({
@@ -107,6 +111,7 @@ export default function RepayOfferModal({
         offerId: offer.id,
         previousOfferStatus: 'active',
         expectedOfferStatus: 'repaid',
+        conflictOutpoint: result.conflictOutpoint,
       })
       if (backend === 'apogee') void syncWallet()
     },

@@ -1,3 +1,4 @@
+import { getPendingTxFailureDescription } from '@/providers/pendingTransactions/resolution'
 import type { PendingTxKind, PendingTxRecord } from '@/providers/pendingTransactions/types'
 
 export function getOfferPendingTx(
@@ -55,6 +56,8 @@ export function getConfirmationProgressText(record: PendingTxRecord): string {
     case 'finalized':
       return '2/2 confirmed'
     case 'failed':
-      return record.errorMessage ?? 'Failed to track transaction'
+      return record.failureReason === 'superseded'
+        ? 'Superseded'
+        : getPendingTxFailureDescription(record)
   }
 }

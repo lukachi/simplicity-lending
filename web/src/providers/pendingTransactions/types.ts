@@ -11,6 +11,7 @@ export type PendingTxKind =
   | 'liquidate_offer'
 
 export type PendingTxConfirmationStatus = 'processing' | 'confirmed' | 'finalized' | 'failed'
+export type PendingTxFailureReason = 'superseded' | 'timeout'
 
 export interface PendingTxRecord {
   txid: string
@@ -22,6 +23,8 @@ export interface PendingTxRecord {
   offerId?: string
   previousOfferStatus?: OfferStatus
   expectedOfferStatus?: OfferStatus
+  /** Input shared by mutually exclusive transactions, used to identify the transaction that won. */
+  conflictOutpoint?: string
   confirmationStatus: PendingTxConfirmationStatus
   confirmations: number | null
   createdAt: number
@@ -29,6 +32,9 @@ export interface PendingTxRecord {
   /** Set once confirmations first reach the finalized threshold. */
   finalizedAt?: number
   lastIndexerCheckAt?: number
+  failureReason?: PendingTxFailureReason
+  /** Transaction that spent `conflictOutpoint` instead of this transaction. */
+  supersededByTxid?: string
   errorMessage?: string
 }
 
@@ -39,6 +45,7 @@ export interface AddPendingTxInput {
   offerId?: string
   previousOfferStatus?: OfferStatus
   expectedOfferStatus?: OfferStatus
+  conflictOutpoint?: string
 }
 
 export interface PendingTransactionsContextValue {

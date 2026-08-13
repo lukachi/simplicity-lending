@@ -13,6 +13,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test:pending-transactions": "tsx --test tests/pendingTransactionResolution.test.ts",
     "preview": "vite preview",
     "add-icon": "tsx ./scripts/add-icon.ts"
   },

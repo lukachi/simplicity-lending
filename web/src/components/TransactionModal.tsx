@@ -49,7 +49,8 @@ function StatusIcon({ status, isComplete }: { status: MutationStatus; isComplete
   )
 }
 
-function statusTitle(status: MutationStatus, isComplete: boolean): string {
+function statusTitle(status: MutationStatus, isComplete: boolean, isSuperseded: boolean): string {
+  if (isSuperseded) return 'Transaction Superseded'
   if (isComplete) return 'Transaction Complete'
   if (status === 'error') return 'Transaction Failed'
   return status === 'pending' ? 'Processing Transaction…' : 'Transaction Pending…'
@@ -59,17 +60,19 @@ export function TransactionStatusTitle({
   status,
   eyebrow,
   isComplete,
+  isSuperseded = false,
 }: {
   status: MutationStatus
   eyebrow: string
   isComplete: boolean
+  isSuperseded?: boolean
 }) {
   return (
     <span className='flex items-center gap-3'>
       <StatusIcon status={status} isComplete={isComplete} />
       <span className='flex flex-col'>
         <span className='text-sm font-normal'>{eyebrow}</span>
-        <span>{statusTitle(status, isComplete)}</span>
+        <span>{statusTitle(status, isComplete, isSuperseded)}</span>
       </span>
     </span>
   )
@@ -81,6 +84,9 @@ interface TransactionBodyProps {
   txid?: string | null
   txStatus: TxStatus | null
   confirmations: number | null
+  failureMessage?: string
+  isSuperseded?: boolean
+  supersededByTxid?: string
 }
 
 function notifyTxConfirmed(txid: string, confirmations: number) {
@@ -99,6 +105,9 @@ export function TransactionBody({
   txid,
   txStatus,
   confirmations,
+  failureMessage,
+  isSuperseded = false,
+  supersededByTxid,
 }: TransactionBodyProps) {
   const { currentStepId } = useTxProgress()
 
@@ -114,7 +123,7 @@ export function TransactionBody({
       ...(txid
         ? [
             {
-              label: 'Transaction ID',
+              label: failureMessage ? 'Attempted Transaction' : 'Transaction ID',
               value: (
                 <a
                   className='text-accent underline'
@@ -128,14 +137,34 @@ export function TransactionBody({
             },
             {
               label: 'Status',
-              value:
-                txStatus === 'finalized'
-                  ? 'Finalized'
-                  : txStatus === 'confirmed'
-                    ? 'Confirmed'
-                    : 'Pending…',
+              value: isSuperseded
+                ? 'Superseded'
+                : failureMessage
+                  ? 'Failed'
+                  : txStatus === 'finalized'
+                    ? 'Finalized'
+                    : txStatus === 'confirmed'
+                      ? 'Confirmed'
+                      : 'Pending…',
             },
-            ...(confirmations
+            ...(supersededByTxid
+              ? [
+                  {
+                    label: 'Winning Transaction',
+                    value: (
+                      <a
+                        className='text-accent underline'
+                        href={getTxExplorerUrl(supersededByTxid)}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                      >
+                        {truncateAddress(supersededByTxid)}
+                      </a>
+                    ),
+                  },
+                ]
+              : []),
+            ...(confirmations && !failureMessage
               ? [
                   {
                     label: 'Confirmations',
@@ -146,7 +175,7 @@ export function TransactionBody({
           ]
         : []),
     ],
-    [summary, txid, txStatus, confirmations],
+    [summary, txid, txStatus, confirmations, failureMessage, isSuperseded, supersededByTxid],
   )
 
   return (
@@ -163,7 +192,12 @@ export function TransactionBody({
           ))}
         </div>
       )}
-      {(status === 'pending' || status === 'error') && currentStepId && (
+      {failureMessage && (
+        <div className='border-danger/30 bg-danger/10 text-danger rounded-xl border px-4 py-3 text-sm'>
+          {failureMessage}
+        </div>
+      )}
+      {(status === 'pending' || (status === 'error' && !failureMessage)) && currentStepId && (
         <div className='bg-surface-secondary rounded-xl p-6'>
           <TransactionStepper />
         </div>

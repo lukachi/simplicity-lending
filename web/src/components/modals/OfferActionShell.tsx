@@ -9,6 +9,7 @@ import {
 import { UiButton, type UiButtonProps } from '@/components/ui/UiButton'
 import { UiModal } from '@/components/ui/UiModal'
 import { useTxStatus } from '@/hooks/useTxStatus'
+import { getPendingTxFailureDescription } from '@/providers/pendingTransactions/resolution'
 import { usePendingTransactions } from '@/providers/pendingTransactions/usePendingTransactions'
 
 export interface OfferAction {
@@ -67,7 +68,7 @@ export default function OfferActionShell({
   onSuccess,
   children,
 }: OfferActionShellProps) {
-  const { addSurfaceToast } = usePendingTransactions()
+  const { addSurfaceToast, pendingTxs } = usePendingTransactions()
   const liveView = deriveView(action)
   const liveTx = useTxStatus(action?.status === 'success' ? action.txid : null)
 
@@ -80,6 +81,12 @@ export default function OfferActionShell({
 
   const view = closing?.view ?? liveView
   const { status: txStatus, confirmations, isComplete } = closing?.tx ?? liveTx
+  const failedRecord = view.txid
+    ? pendingTxs.find(record => record.txid === view.txid && record.confirmationStatus === 'failed')
+    : undefined
+  const isSuperseded = failedRecord?.failureReason === 'superseded'
+  const displayStatus = failedRecord ? 'error' : view.status
+  const failureMessage = failedRecord ? getPendingTxFailureDescription(failedRecord) : undefined
 
   const isProcessing = action?.status === 'pending'
 
@@ -102,9 +109,10 @@ export default function OfferActionShell({
         <span key={view.isTxActive ? 'tx' : 'form'} className='animate-modal-view-in block'>
           {view.isTxActive ? (
             <TransactionStatusTitle
-              status={view.status}
+              status={displayStatus}
               eyebrow={view.eyebrow}
-              isComplete={isComplete}
+              isComplete={failedRecord ? false : isComplete}
+              isSuperseded={isSuperseded}
             />
           ) : (
             <span className='flex items-center gap-3'>
@@ -122,7 +130,7 @@ export default function OfferActionShell({
             isDisabled={isProcessing}
             onPress={() => handleOpenChange(false)}
           >
-            {view.status === 'success' ? 'Done' : 'Close'}
+            {view.status === 'success' && !failedRecord ? 'Done' : 'Close'}
           </UiButton>
         ) : action ? (
           <UiButton
@@ -139,11 +147,14 @@ export default function OfferActionShell({
       <div key={view.isTxActive ? 'tx' : 'form'} className='animate-modal-view-in block'>
         {view.isTxActive ? (
           <TransactionBody
-            status={view.status}
+            status={displayStatus}
             summary={view.summary}
             txid={view.txid}
             txStatus={txStatus}
             confirmations={confirmations}
+            failureMessage={failureMessage}
+            isSuperseded={isSuperseded}
+            supersededByTxid={failedRecord?.supersededByTxid}
           />
         ) : (
           children

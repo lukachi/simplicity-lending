@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { getTxExplorerUrl } from '@/api/esplora/utils'
 import BellBoldIcon from '@/components/icons/BellBoldIcon'
 import { UiButton } from '@/components/ui/UiButton'
+import { getPendingTxFailureDescription } from '@/providers/pendingTransactions/resolution'
 import type { PendingTxRecord } from '@/providers/pendingTransactions/types'
 import { usePendingTransactions } from '@/providers/pendingTransactions/usePendingTransactions'
 import { useWallet } from '@/providers/wallet/useWallet'
@@ -31,6 +32,19 @@ function PendingTxRow({ tx }: { tx: PendingTxRecord }) {
       >
         {truncateAddress(tx.txid)}
       </a>
+      {tx.confirmationStatus === 'failed' && (
+        <p className='text-danger text-xs'>{getPendingTxFailureDescription(tx)}</p>
+      )}
+      {tx.supersededByTxid && (
+        <a
+          className='text-accent text-xs underline'
+          href={getTxExplorerUrl(tx.supersededByTxid)}
+          target='_blank'
+          rel='noopener noreferrer'
+        >
+          Winning transaction: {truncateAddress(tx.supersededByTxid)}
+        </a>
+      )}
     </div>
   )
 }
