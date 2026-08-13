@@ -42,6 +42,23 @@ test('recognizes both incompatible terminal offer states for legacy records', ()
   assert.equal(isSupersededByOfferStatus({ kind: 'liquidate_offer' }, 'liquidated'), false)
 })
 
+test('waits for authoritative outspend resolution when a conflict outpoint is persisted', () => {
+  assert.equal(
+    isSupersededByOfferStatus(
+      { kind: 'repay_offer', conflictOutpoint: CONFLICT_OUTPOINT },
+      'liquidated',
+    ),
+    false,
+  )
+  assert.equal(
+    isSupersededByOfferStatus(
+      { kind: 'liquidate_offer', conflictOutpoint: CONFLICT_OUTPOINT },
+      'repaid',
+    ),
+    false,
+  )
+})
+
 test('derives reload-safe supersession copy from structured persisted fields', () => {
   assert.equal(
     getPendingTxFailureDescription({

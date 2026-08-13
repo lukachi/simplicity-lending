@@ -49,9 +49,13 @@ export function hasReachedOfferStatus(current: OfferStatus, expected: OfferStatu
 
 /** Fallback for records saved before `conflictOutpoint` was introduced. */
 export function isSupersededByOfferStatus(
-  record: Pick<PendingTxRecord, 'kind'>,
+  record: Pick<PendingTxRecord, 'kind' | 'conflictOutpoint'>,
   current: OfferStatus,
 ): boolean {
+  // Modern records must be resolved from the actual outspend so the winner's
+  // txid is persisted atomically with the superseded state. Otherwise a faster
+  // indexer response can mark the record failed first and stop outspend polling.
+  if (record.conflictOutpoint) return false
   if (record.kind === 'repay_offer') return current === 'liquidated'
   if (record.kind === 'liquidate_offer') return current === 'repaid' || current === 'claimed'
   return false
