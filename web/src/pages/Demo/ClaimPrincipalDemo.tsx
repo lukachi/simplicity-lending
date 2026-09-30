@@ -5,12 +5,13 @@ import { z as zod } from 'zod'
 
 import { UiButton } from '@/components/ui/UiButton'
 import { UiTextField } from '@/components/ui/UiTextField'
+import { NETWORK_CONFIG } from '@/constants/network-config'
 import { type ClaimPrincipalSummary, useClaimPrincipal } from '@/hooks/useClaimPrincipal'
 import { useStandardTransactionFlow } from '@/hooks/useStandardTransactionFlow'
 import { useTxStatus } from '@/hooks/useTxStatus'
 import { isConfirmedWalletUtxo, isPolicyAssetUtxo } from '@/lwk/utxo'
 import { useLwk } from '@/providers/lwk/useLwk'
-import { useWallet } from '@/providers/wallet/useWallet'
+import { useWallet } from '@/providers/walletFacade/useWallet'
 
 import { formatCollateralUtxoOption } from './helpers'
 import { TxResult } from './TxResult'
@@ -32,7 +33,7 @@ const outpointListSchema = (label: string) =>
 const claimPrincipalFormSchema = zod.object({
   principalOutpoint: outpointSchema('Principal outpoint'),
   borrowerNftOutpoint: outpointSchema('Borrower NFT outpoint'),
-  feeOutpoints: outpointListSchema('Fee L-BTC outpoint'),
+  feeOutpoints: outpointListSchema(`Fee ${NETWORK_CONFIG.collateralAsset.symbol} outpoint`),
   borrowerNftRecipientAddress: zod.string().trim().optional(),
   principalRecipientAddress: zod.string().trim().optional(),
 })
@@ -226,11 +227,11 @@ export default function ClaimPrincipalDemo() {
         })}
         {renderTextField({
           name: 'feeOutpoints',
-          label: 'Fee L-BTC outpoint(s)',
+          label: `Fee ${NETWORK_CONFIG.collateralAsset.symbol} outpoint(s)`,
           placeholder: 'txid:vout, txid:vout, ...',
           description: feeUtxoOptions.length
             ? `Available: ${feeUtxoOptions.map(o => o.label).join(' | ')}`
-            : 'No wallet L-BTC UTXOs loaded',
+            : `No wallet ${NETWORK_CONFIG.collateralAsset.symbol} UTXOs loaded`,
         })}
       </div>
 
@@ -246,7 +247,7 @@ export default function ClaimPrincipalDemo() {
           loadingText='Refreshing...'
           onPress={refreshWalletUtxos}
         >
-          Refresh L-BTC UTXOs
+          Refresh {NETWORK_CONFIG.collateralAsset.symbol} UTXOs
         </UiButton>
         <UiButton
           isDisabled={connectionStatus !== 'ready'}

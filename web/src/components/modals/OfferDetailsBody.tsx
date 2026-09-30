@@ -8,7 +8,7 @@ import DetailsPanel, { type DetailRow } from '@/components/DetailsPanel'
 import { NETWORK_CONFIG } from '@/constants/network-config'
 import { APR_TOOLTIP, PROTOCOL_FEE_LABEL, PROTOCOL_FEE_TOOLTIP } from '@/constants/offers'
 import { useFormatAmount } from '@/hooks/useFormatAmount'
-import { useWallet } from '@/providers/wallet/useWallet'
+import { useWallet } from '@/providers/walletFacade/useWallet'
 import { truncateAddress } from '@/utils/format'
 import {
   calcInterest,
@@ -57,12 +57,12 @@ export default function OfferDetailsBody({
       {
         label: 'Collateral Amount',
         value: formatCollateralDisplay(offer.collateral_amount),
-        tooltip: 'The LBTC you locked as collateral for this loan.',
+        tooltip: `The ${NETWORK_CONFIG.collateralAsset.symbol} you locked as collateral for this loan.`,
       },
       {
         label: 'Loan Amount',
         value: formatPrincipalAmount(offer.principal_amount),
-        tooltip: 'The USDT you borrowed and now repay.',
+        tooltip: `The ${NETWORK_CONFIG.principalAsset.symbol} you borrowed and now repay.`,
       },
       {
         label: 'Expected Earning',
